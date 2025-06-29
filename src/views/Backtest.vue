@@ -11,8 +11,17 @@
           <!-- 全局参数 -->
           <div class="grid grid-cols-1 md:grid-cols-3 gap-6 border-b pb-6">
             <div class="col-span-full">
-              <label for="strategyFile" class="block text-sm font-medium text-gray-700">{{ $t('backtest.select_strategy_file') }}</label>
-              <input type="file" @change="handleFileSelect" id="strategyFile" accept=".py" class="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100">
+              <label for="strategyTemplate" class="block text-sm font-medium text-gray-700">{{ $t('backtest.select_template') }}</label>
+              <n-select
+                id="strategyTemplate"
+                v-model:value="selectedTemplateId"
+                :options="templateOptions"
+                :loading="templatesLoading"
+                :placeholder="$t('backtest.select_template_placeholder')"
+                @update:value="handleTemplateChange"
+                class="mt-1"
+                clearable
+              />
             </div>
             <div>
               <label for="exchange" class="block text-sm font-medium text-gray-700">{{ $t('backtest.exchange') }}</label>
@@ -148,13 +157,15 @@
 </template>
 
 <script>
-import { defineComponent } from 'vue';
+import { defineComponent, ref, onMounted, computed, nextTick, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import axios from 'axios';
 import SockJS from 'sockjs-client/dist/sockjs.min.js';
 import Stomp from 'stompjs';
-import { NSelect, NCheckbox } from 'naive-ui';
+import { NSelect, NCheckbox, useMessage } from 'naive-ui';
 import { useSubscriptionStore } from '@/stores/subscription';
-import { mapState, mapActions } from 'pinia';
+import { useStrategyTemplateStore } from '@/stores/strategyTemplate';
+import { storeToRefs } from 'pinia';
 import NavBar from '@/components/NavBar.vue';
 import BacktestResultChart from '@/components/BacktestResultChart.vue';
 
@@ -170,287 +181,297 @@ export default defineComponent({
     NSelect,
     NCheckbox,
   },
-  data() {
+  setup() {
+    const { t } = useI18n();
+    const message = useMessage();
+    const logContainer = ref(null);
+
+    // Stores
+    const subscriptionStore = useSubscriptionStore();
+    const templateStore = useStrategyTemplateStore();
+    const { subscribedSymbols } = storeToRefs(subscriptionStore);
+    const { templates: strategyTemplates, loading: templatesLoading, currentTemplate } = storeToRefs(templateStore);
+
+    // Reactive State
+    const strategyCode = ref('');
+    const selectedTemplateId = ref(null);
     const endDate = new Date().toISOString().slice(0, 10);
     const startDate = new Date(new Date().setFullYear(new Date().getFullYear() - 1)).toISOString().slice(0, 10);
-
-    return {
-      strategyCode: '',
-      coreParams: {
-        legs: [defaultLeg()],
-        /* 全局唯一行情类型配置 */
-        dataTypes: {
-          useDepth: false,
-          useTrade: false,
-          /* 直接就是周期字符串数组，默认 15m */
-          ohlc: ['15m']
-        },
-        startDate: startDate,
-        endDate: endDate,
-        exchange: 'okx',
-        backtestPattern: {
-          name: 'OHLC',
-          params: {
-            miss_ratio: 0.01,
-            slippage: 0.005
-          }
+    
+    const coreParams = ref({
+      legs: [defaultLeg()],
+      dataTypes: {
+        useDepth: false,
+        useTrade: false,
+        ohlc: ['15m'],
+      },
+      startDate: startDate,
+      endDate: endDate,
+      exchange: 'okx',
+      backtestPattern: {
+        name: 'OHLC',
+        params: {
+          miss_ratio: 0.01,
+          slippage: 0.005,
         },
       },
-      exchangeOptions: [{ label: 'OKX', value: 'okx' }, { label: 'Binance', value: 'binance' }],
-      patternOptions: [
-        { label: 'OHLC', value: 'OHLC' },
-        { label: 'ORDERBOOK', value: 'ORDERBOOK' }
-      ],
-      timeframeMap: { '1m': 'ONE_MINUTE', '5m': 'FIVE_MINUTE', '15m': 'FIFTEEN_MINUTE', '1h': 'ONE_HOUR', '4h': 'FOUR_HOUR', '12h': 'TWELVE_HOUR', '1d': 'ONE_DAY' },
-      timeframeOptions: [
-        { label: '1m', value: '1m' },
-        { label: '3m', value: '3m' },
-        { label: '5m', value: '5m' },
-        { label: '15m', value: '15m' },
-        { label: '30m', value: '30m' },
-        { label: '1H', value: '1H' },
-        { label: '2H', value: '2H' },
-        { label: '4H', value: '4H' },
-        { label: '6H', value: '6H' },
-        { label: '12H', value: '12H' },
-        { label: '1D', value: '1D' },
-        { label: '2D', value: '2D' },
-        { label: '3D', value: '3D' },
-        { label: '1W', value: '1W' },
-        { label: '1M', value: '1M' },
+    });
+
+    const strategyParams = ref({});
+    const loading = ref(false);
+    const results = ref(null);
+    const chartData = ref(null);
+    const error = ref(null);
+    const logs = ref([]);
+    const stompClient = ref(null);
+    const backtestId = ref(null);
+    const tradeLog = ref([]);
+
+    // Static Options
+    const exchangeOptions = [{ label: 'OKX', value: 'okx' }, { label: 'Binance', value: 'binance' }];
+    const patternOptions = [{ label: 'OHLC', value: 'OHLC' }, { label: 'ORDERBOOK', value: 'ORDERBOOK' }];
+    const timeframeMap = { '1m': 'ONE_MINUTE', '5m': 'FIVE_MINUTE', '15m': 'FIFTEEN_MINUTE', '1h': 'ONE_HOUR', '4h': 'FOUR_HOUR', '12h': 'TWELVE_HOUR', '1d': 'ONE_DAY' };
+    const timeframeOptions = [
+        { label: '1m', value: '1m' }, { label: '3m', value: '3m' }, { label: '5m', value: '5m' },
+        { label: '15m', value: '15m' }, { label: '30m', value: '30m' }, { label: '1H', value: '1H' },
+        { label: '2H', value: '2H' }, { label: '4H', value: '4H' }, { label: '6H', value: '6H' },
+        { label: '12H', value: '12H' }, { label: '1D', value: '1D' }, { label: '2D', value: '2D' },
+        { label: '3D', value: '3D' }, { label: '1W', value: '1W' }, { label: '1M', value: '1M' },
         { label: '3M', value: '3M' }
-      ],
-      strategyParams: {},
-      loading: false,
-      results: null,
-      chartData: null,
-      error: null,
-      logs: [],
-      stompClient: null,
-      backtestId: null,
-      tradeLog: [],
+    ];
+
+    // Computed Properties
+    const templateOptions = computed(() =>
+      strategyTemplates.value.map(t => ({ label: t.name, value: t.id }))
+    );
+
+    const symbolOptions = computed(() => 
+      Array.isArray(subscribedSymbols.value) ? subscribedSymbols.value.map(s => ({ label: s, value: s })) : []
+    );
+
+    const tradeLogHeaders = computed(() => 
+      tradeLog.value.length > 0 ? Object.keys(tradeLog.value[0]) : []
+    );
+
+    const tradeLogHeaderMap = computed(() => ({
+      datetime: t('backtest.trade_header_datetime'),
+      symbol: t('backtest.trade_header_symbol'),
+      action: t('backtest.trade_header_action'),
+      side: t('backtest.trade_header_side'),
+      size: t('backtest.trade_header_size'),
+      avg_cost: t('backtest.trade_header_avg_cost'),
+      price: t('backtest.trade_header_price'),
+      pnl_settle_ccy: t('backtest.trade_header_pnl_ccy'),
+      pnl: t('backtest.trade_header_pnl_usd'),
+      fee: t('backtest.trade_header_fee'),
+    }));
+
+    // Methods
+    const addLeg = () => coreParams.value.legs.push(defaultLeg());
+    const removeLeg = (index) => coreParams.value.legs.splice(index, 1);
+    
+    const handleExchangeChange = async (value) => {
+      coreParams.value.exchange = value;
+      coreParams.value.legs = [defaultLeg()];
+      await subscriptionStore.fetchSubscriptions(value);
     };
-  },
-  watch: {
-    logs() { this.$nextTick(() => { if (this.$refs.logContainer) this.$refs.logContainer.scrollTop = this.$refs.logContainer.scrollHeight; }); }
-  },
-  computed: {
-    ...mapState(useSubscriptionStore, ['subscribedSymbols']),
-    symbolOptions() { return Array.isArray(this.subscribedSymbols) ? this.subscribedSymbols.map(s => ({ label: s, value: s })) : []; },
-    tradeLogHeaders() { return this.tradeLog.length > 0 ? Object.keys(this.tradeLog[0]) : []; },
-    tradeLogHeaderMap() {
-      return {
-        datetime: '時間', symbol: '取引ペア', action: '操作', side: '方向', size: '数量', avg_cost: '参入価格',
-        price: '約定/決済価格', pnl_settle_ccy: '損益(コイン)', pnl: '損益(USD)', fee: '手数料'
-      };
-    }
-  },
-  methods: {
-    ...mapActions(useSubscriptionStore, ['fetchSubscriptions']),
-    addLeg() { this.coreParams.legs.push(defaultLeg()); },
-    removeLeg(index) { this.coreParams.legs.splice(index, 1); },
-    /* 全局 OHLC 周期管理 */
-    addOhlc() { this.coreParams.dataTypes.ohlc.push('1h'); },
-    removeOhlc(i) { this.coreParams.dataTypes.ohlc.splice(i, 1); },
-    async handleExchangeChange(value) {
-      this.coreParams.exchange = value;
-      this.coreParams.legs = [defaultLeg()];
-      await this.fetchSubscriptions(value);
-    },
-    handleFileSelect(event) {
-        const file = event.target.files[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                this.strategyCode = e.target.result;
-                const code = this.strategyCode;
-                let match;
 
-                // 1. Auto-detect strategy params from class attributes
-                const params = {};
-                const classBodyRegex = /class\s+Strategy[\s\S]*?:([\s\S]*?)^\s*def\s+/m;
-                const bodyMatch = code.match(classBodyRegex);
-                
-                if (bodyMatch) {
-                    const body = bodyMatch[1];
-                    const paramRegex = /^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*([0-9.-]+)/gm;
-                    while ((match = paramRegex.exec(body)) !== null) {
-                        const key = match[1];
-                        const value = parseFloat(match[2]);
-                        if (!['exchange', 'symbols'].includes(key) && !isNaN(value)) {
-                            params[key] = value;
-                        }
-                    }
-                }
-                
-                // 2. Fallback to @param annotations
-                const paramAnnotationRegex = /@param\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*([0-9.-]+)/g;
-                while ((match = paramAnnotationRegex.exec(code)) !== null) {
-                    const key = match[1];
-                    const value = parseFloat(match[2]);
-                    if (!params.hasOwnProperty(key) && !isNaN(value)) {
-                         params[key] = value;
-                    }
-                }
-                this.strategyParams = params;
+    const handleTemplateChange = async (templateId) => {
+      if (!templateId) {
+        strategyCode.value = '';
+        strategyParams.value = {};
+        coreParams.value.legs = [defaultLeg()];
+        return;
+      }
+      
+      await templateStore.fetchTemplateById(templateId);
+      const template = currentTemplate.value; // Use the ref from storeToRefs
 
-                // 2. Auto-detect number of legs from handler functions
-                let legCount = 0;
-                const legRegex = /def\s+(on_receive_ohlc|on_receive_depth)\s*\(([^)]*)\)/g;
-                while ((match = legRegex.exec(code)) !== null) {
-                    const args = match[2].split(',').map(arg => arg.trim());
-                    // The first argument is always 'self', so we count the rest
-                    const handlerLegs = args.filter(arg => arg !== 'self').length;
-                    legCount += handlerLegs;
-                }
-                
-                // Default to 1 leg if a file is loaded but no specific handlers are found
-                if (legCount === 0 && code.length > 0) {
-                    legCount = 1;
-                }
-
-                // 3. Adjust UI to show the correct number of legs
-                const currentCount = this.coreParams.legs.length;
-                const diff = legCount - currentCount;
-
-                if (diff > 0) {
-                    for (let i = 0; i < diff; i++) {
-                        this.addLeg();
-                    }
-                } else if (diff < 0) {
-                    this.coreParams.legs.splice(legCount);
-                }
-            };
-            reader.readAsText(file);
+      if (template && template.script) {
+        strategyCode.value = template.script;
+        
+        const params = {};
+        if (template.parameters) {
+            template.parameters.forEach(p => {
+                const value = !isNaN(parseFloat(p.defaultValue)) && p.dataType !== 'STRING'
+                    ? parseFloat(p.defaultValue)
+                    : p.defaultValue;
+                params[p.name] = value;
+            });
         }
-    },
-    formatTradeCell(trade, header) {
-      if (typeof trade[header] === 'number') {
-        return trade[header].toFixed(4);
-      }
-      return trade[header];
-    },
-    async runBacktest() {
-      this.loading = true;
-      this.results = null;
-      this.chartData = null;
-      this.error = null;
-      this.logs = [];
-      this.tradeLog = [];
-
-      const payload = {
-        strategyCode: this.strategyCode,
-        SYMBOLS: this.coreParams.legs.map(leg => ({
-          WITHOUT_TIME: leg.symbols.map(s => s.includes('.') ? s : `${s}.${this.coreParams.exchange}`)
-        })),
-        BACKTEST: {
-          OUTPUT_REPORT: true,
-          START_TIME: new Date(this.coreParams.startDate).getTime(),
-          END_TIME: new Date(this.coreParams.endDate).getTime(),
-          BACKTEST_PATTERN: {
-            PATTERN_NAME: this.coreParams.backtestPattern.name,
-            PATTERN_PARAMS: this.coreParams.backtestPattern.name === 'ORDERBOOK'
-              ? this.coreParams.backtestPattern.params
-              : {}
-          }
-        },
-        DATA_TYPE: {
-          USE_ORDER_BOOK: this.coreParams.dataTypes.useDepth,
-          USE_TRADE: this.coreParams.dataTypes.useTrade,
-          OHLC: this.coreParams.dataTypes.ohlc
-            .filter(t => t) // 过滤掉空值
-            .map(t => ({
-              TYPE: 'MID',
-              TIME_TYPE: this.timeframeMap[t] || 'FIFTEEN_MINUTE',
-              USE: true
-            }))
-        },
-        PARAMS: this.strategyParams,
-        LOG_LEVEL: 'INFO'
-      };
-
-      try {
-        this.backtestId = null; // 重置
-        const apiUrl = `${import.meta.env.VITE_API_BASE_URL}/api/v1/backtest/run`;
-        const response = await axios.post(apiUrl, payload, {
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          }
-        });
-        console.log('Backend response:', response.data); // 添加日志，用于调试
-        if (response.data && response.data.backtestId) {
-          this.backtestId = response.data.backtestId;
-          this.connectWebSocket();
-        } else {
-          throw new Error(this.$t('backtest.errors.failed_to_start'));
+        strategyParams.value = params;
+        
+        let legCount = 0;
+        const legRegex = /def\s+(on_receive_ohlc|on_receive_depth)\s*\(([^)]*)\)/g;
+        let match;
+        while ((match = legRegex.exec(template.script)) !== null) {
+            const args = match[2].split(',').map(arg => arg.trim());
+            const handlerLegs = args.filter(arg => arg !== 'self').length;
+            legCount += handlerLegs;
         }
-      } catch (err) {
-        this.error = err.response ? err.response.data.detail || this.$t('backtest.errors.general_error') : err.message;
-        this.loading = false;
+        if (legCount === 0 && template.script.length > 0) legCount = 1;
+
+        const currentCount = coreParams.value.legs.length;
+        const diff = legCount - currentCount;
+        if (diff > 0) {
+            for (let i = 0; i < diff; i++) addLeg();
+        } else if (diff < 0) {
+            coreParams.value.legs.splice(legCount);
+        }
       }
-    },
+    };
 
-    connectWebSocket() {
-      const socket = new SockJS(`${import.meta.env.VITE_API_BASE_URL}/ws`);
-      this.stompClient = Stomp.over(socket);
-
-      this.stompClient.connect({}, frame => {
-        this.logs.push({type: 'info', message: 'WebSocket connected successfully. Waiting for backtest data...'});
-        this.stompClient.subscribe(`/topic/backtest/${this.backtestId}`, (message) => {
-          console.log('WebSocket message received:', message.body); // 添加日志，用于调试
-          try {
-            const body = JSON.parse(message.body);
-
-            if (body.type === 'log' || body.type === 'error') {
-              if (body.data) {
-                this.logs.push({
-                  type: body.type === 'error' ? 'error' : 'info',
-                  message: body.data
-                });
-              }
-            } else if (body.report) {
-              this.results = body.report;
-              this.chartData = this.processChartData(body.report);
-              this.tradeLog = body.report.trade_log || [];
-              this.loading = false;
-              this.stompClient.disconnect();
-            } else if (body.type === 'finished') {
-              this.logs.push({ type: 'info', message: body.data });
-              this.loading = false;
-              this.stompClient.disconnect();
-            }
-          } catch (e) {
-            this.logs.push({type: 'error', message: 'Error processing message: ' + e.message});
-          }
-        });
-      }, error => {
-        this.logs.push({type: 'error', message: 'WebSocket connection error: ' + error});
-        this.loading = false;
-      });
-    },
-
-    processChartData(report) {
-      if (!report || !report.equity_curve) {
-        return { labels: [], datasets: [] };
-      }
+    const processChartData = (report) => {
+      if (!report || !report.equity_curve) return { labels: [], datasets: [] };
       const equityCurve = report.equity_curve;
       return {
         labels: equityCurve.map(item => new Date(item.timestamp).toLocaleString()),
-        datasets: [
-          {
-            label: 'Equity Curve',
-            data: equityCurve.map(item => item.equity),
-            borderColor: '#4F46E5',
-            tension: 0.1,
-            fill: false
-          }
-        ]
+        datasets: [{
+          label: 'Equity Curve',
+          data: equityCurve.map(item => item.equity),
+          borderColor: '#4F46E5',
+          tension: 0.1,
+          fill: false
+        }]
       };
-    }
-  },
-  async mounted() {
-    await this.fetchSubscriptions(this.coreParams.exchange);
+    };
+
+    const connectWebSocket = () => {
+        const socket = new SockJS(`${import.meta.env.VITE_API_BASE_URL}/ws`);
+        stompClient.value = Stomp.over(socket);
+        stompClient.value.connect({}, () => {
+            logs.value.push({type: 'info', message: 'WebSocket connected successfully. Waiting for backtest data...'});
+            stompClient.value.subscribe(`/topic/backtest/${backtestId.value}`, (message) => {
+                try {
+                    const body = JSON.parse(message.body);
+                    if (body.type === 'log' || body.type === 'error') {
+                        if (body.data) logs.value.push({ type: body.type, message: body.data });
+                    } else if (body.report) {
+                        results.value = body.report;
+                        chartData.value = processChartData(body.report);
+                        tradeLog.value = body.report.trade_log || [];
+                        loading.value = false;
+                        stompClient.value.disconnect();
+                    } else if (body.type === 'finished') {
+                        logs.value.push({ type: 'info', message: body.data });
+                        loading.value = false;
+                        stompClient.value.disconnect();
+                    }
+                } catch (e) {
+                    logs.value.push({type: 'error', message: 'Error processing message: ' + e.message});
+                }
+            });
+        }, () => {
+            logs.value.push({type: 'error', message: 'WebSocket connection error.'});
+            loading.value = false;
+        });
+    };
+    
+    const runBacktest = async () => {
+        if (!strategyCode.value) {
+            message.error(t('backtest.errors.no_template_selected'));
+            return;
+        }
+
+        loading.value = true;
+        results.value = null;
+        chartData.value = null;
+        error.value = null;
+        logs.value = [];
+        tradeLog.value = [];
+        
+        const payload = {
+            strategyCode: strategyCode.value,
+            SYMBOLS: coreParams.value.legs.map(leg => ({
+                WITHOUT_TIME: leg.symbols.map(s => s.includes('.') ? s : `${s}.${coreParams.value.exchange}`)
+            })),
+            BACKTEST: {
+                OUTPUT_REPORT: true,
+                START_TIME: new Date(coreParams.value.startDate).getTime(),
+                END_TIME: new Date(coreParams.value.endDate).getTime(),
+                BACKTEST_PATTERN: {
+                    PATTERN_NAME: coreParams.value.backtestPattern.name,
+                    PATTERN_PARAMS: coreParams.value.backtestPattern.name === 'ORDERBOOK' ? coreParams.value.backtestPattern.params : {}
+                }
+            },
+            DATA_TYPE: {
+                USE_ORDER_BOOK: coreParams.value.dataTypes.useDepth,
+                USE_TRADE: coreParams.value.dataTypes.useTrade,
+                OHLC: coreParams.value.dataTypes.ohlc.filter(t => t).map(t => ({
+                    TYPE: 'MID',
+                    TIME_TYPE: timeframeMap[t] || 'FIFTEEN_MINUTE',
+                    USE: true
+                }))
+            },
+            PARAMS: strategyParams.value,
+            LOG_LEVEL: 'INFO'
+        };
+
+        try {
+            backtestId.value = null;
+            const apiUrl = `${import.meta.env.VITE_API_BASE_URL}/api/v1/backtest/run`;
+            const response = await axios.post(apiUrl, payload, {
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+            });
+            if (response.data && response.data.backtestId) {
+                backtestId.value = response.data.backtestId;
+                connectWebSocket();
+            } else {
+                throw new Error(t('backtest.errors.failed_to_start'));
+            }
+        } catch (err) {
+            error.value = err.response?.data?.detail || err.message || t('backtest.errors.general_error');
+            loading.value = false;
+        }
+    };
+    
+    const formatTradeCell = (trade, header) => {
+      const value = trade[header];
+      if (typeof value === 'number') return value.toFixed(4);
+      return value;
+    };
+
+    // Lifecycle Hook
+    onMounted(() => {
+      subscriptionStore.fetchSubscriptions(coreParams.value.exchange);
+      templateStore.fetchTemplates(0, 1000); // Fetch all for dropdown
+    });
+
+    watch(logs, async () => {
+      await nextTick();
+      if (logContainer.value) {
+        logContainer.value.scrollTop = logContainer.value.scrollHeight;
+      }
+    }, { deep: true });
+
+    return {
+      t,
+      logContainer,
+      coreParams,
+      exchangeOptions,
+      patternOptions,
+      timeframeOptions,
+      strategyParams,
+      loading,
+      results,
+      chartData,
+      error,
+      logs,
+      tradeLog,
+      selectedTemplateId,
+      templatesLoading,
+      templateOptions,
+      symbolOptions,
+      tradeLogHeaders,
+      tradeLogHeaderMap,
+      strategyCode,
+      addLeg,
+      removeLeg,
+      handleExchangeChange,
+      handleTemplateChange,
+      runBacktest,
+      formatTradeCell,
+    };
   }
 });
 </script>

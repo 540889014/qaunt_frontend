@@ -5,6 +5,9 @@ import Subscriptions from '../views/Subscriptions.vue'
 import SpreadTool from '../views/SpreadTool.vue'
 import StatisticalArbitrage from '../views/StatisticalArbitrage.vue'
 import Backtest from '../views/Backtest.vue'
+import UserManagement from '@/views/UserManagement.vue'
+import StrategyTemplateList from '@/views/StrategyTemplateList.vue'
+import StrategyTemplateForm from '@/views/StrategyTemplateForm.vue'
 import { useAuthStore } from '../stores/auth'
 
 const routes = [
@@ -27,7 +30,7 @@ const routes = [
   {
     path: '/user-management',
     name: 'UserManagement',
-    component: () => import('../views/UserManagement.vue'),
+    component: UserManagement,
     meta: { requiresAuth: true, requiresAdmin: true }
   },
   {
@@ -53,6 +56,24 @@ const routes = [
     name: 'Backtest',
     component: Backtest,
     meta: { requiresAuth: true, title: 'バックテスト' }
+  },
+  {
+    path: '/strategy-templates',
+    name: 'StrategyTemplateList',
+    component: StrategyTemplateList,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/strategy-templates/new',
+    name: 'StrategyTemplateCreate',
+    component: StrategyTemplateForm,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/strategy-templates/:id/edit',
+    name: 'StrategyTemplateEdit',
+    component: StrategyTemplateForm,
+    meta: { requiresAuth: true }
   }
 ]
 

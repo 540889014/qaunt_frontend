@@ -56,8 +56,9 @@ export const subscribe = (username, symbol, dataType, instType, timeframe, excha
   api.post('/api/v1/subscription/subscribe', null, { params: { username, symbol, dataType, instType, timeframe, exchange } })
 export const unsubscribe = (username, symbol, dataType, exchange, timeframe = '') =>
   api.post('/api/v1/subscription/unsubscribe', null, { params: { username, symbol, dataType, exchange, timeframe } })
-export const getSubscriptionsByUsername = (username, exchange = '') =>
-  api.get('/api/v1/subscription/user', { params: { username, exchange } })
+export const getSubscriptionsByUsername = (username, exchange) => {
+  return api.get('/api/v1/subscription/user', { params: { username, exchange } })
+}
 export const getSubscriptionsByDataType = (dataType, exchange = '') =>
   api.get('/api/v1/subscription/type', { params: { dataType, exchange } })
 
@@ -72,5 +73,31 @@ export const getDepthData = (symbol, exchange = 'okx') =>
 // ========== 公共市场数据 ==========
 export const getInstruments = (instType) =>
   api.get('/api/v5/public/instruments', { params: { instType } })
+
+// --- Strategy Templates API ---
+
+export const getStrategyTemplates = (page = 0, size = 10) => {
+  return api.get('/api/strategy-templates', { params: { page, size } })
+}
+
+export const getStrategyTemplateById = (id) => {
+  return api.get(`/api/strategy-templates/${id}`)
+}
+
+export const createStrategyTemplate = (formData) => {
+  return api.post('/api/strategy-templates', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+}
+
+export const updateStrategyTemplate = (id, formData) => {
+  return api.put(`/api/strategy-templates/${id}`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+}
+
+export const deleteStrategyTemplate = (id) => {
+  return api.delete(`/api/strategy-templates/${id}`)
+}
 
 export default api 

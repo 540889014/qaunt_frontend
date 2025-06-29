@@ -31,8 +31,6 @@ export default defineConfig(({ command, mode }) => {
         '/api': {
           target: env.VITE_API_BASE_URL || 'http://localhost:8080',
           changeOrigin: true,
-          // 我们的后端API本身就以/api开头，所以不需要重写路径
-          // rewrite: (path) => path.replace(/^\/api/, '') 
         },
         '/ws': {
           target: env.VITE_API_BASE_URL ? env.VITE_API_BASE_URL.replace('http', 'ws') : 'ws://localhost:8080',
