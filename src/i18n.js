@@ -7,12 +7,14 @@ const messages = {};
 for (const path in localeModules) {
   const matched = path.match(/([A-Za-z0-9-_]+)\.json$/);
   if (matched && matched[1]) {
-    messages[matched[1]] = localeModules[path].default;
+    const module = localeModules[path].default || localeModules[path];
+    // 如果json文件顶层有messages字段，则只取messages字段
+    messages[matched[1]] = module.messages || module;
   }
 }
 
 const i18n = createI18n({
-  legacy: true, // 使用 Composition API 模式，必须为 false
+  legacy: false, // 使用 Composition API 模式，必须为 false
   globalInjection: true, // 允许在模板中使用 $t 等全局函数
   locale: localStorage.getItem('locale') || 'zh', // 从本地存储读取语言，默认为中文
   fallbackLocale: 'en', // 如果某个 key 在当前语言中不存在，则回退到英文

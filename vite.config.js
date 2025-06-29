@@ -52,7 +52,8 @@ export default defineConfig(({ command, mode }) => {
       minify: 'esbuild',
       terserOptions: {
         compress: {
-          drop_console: true,
+          // Temporarily disable dropping console for debugging production issues
+          // drop_console: true,
           drop_debugger: true
         }
       }

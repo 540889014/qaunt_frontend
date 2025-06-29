@@ -2,35 +2,35 @@
   <div class="spread-tool-container">
     <NavBar />
     <div class="spread-tool">
-      <h1 class="text-2xl font-bold mb-4">スプレッド分析ツール</h1>
+      <h1 class="text-2xl font-bold mb-4">{{ $t('spread_tool.title') }}</h1>
       <div class="input-group relative">
-        <label>レッグAを選択</label>
+        <label>{{ $t('spread_tool.select_leg_a') }}</label>
         <input type="text" id="input1" v-model="input1" @input="onInput1" @focus="onInput1" autocomplete="off" class="w-full p-2 border rounded-md" @blur="onBlur1" @click="onInput1" ref="input1Ref">
         <ul v-if="showDropdown1 && filtered1.length" class="dropdown-list w-full border rounded-md shadow-lg max-h-60 overflow-auto bg-white z-10 absolute top-full left-0 mt-1" @mousedown.prevent>
           <li v-for="item in filtered1" :key="item.instId" @click="select1(item)" class="px-4 py-2 hover:bg-gray-100 cursor-pointer">{{ item.instId }}</li>
         </ul>
       </div>
       <div class="input-group relative">
-        <label>レッグBを選択</label>
+        <label>{{ $t('spread_tool.select_leg_b') }}</label>
         <input type="text" id="input2" v-model="input2" @input="onInput2" @focus="onInput2" autocomplete="off" class="w-full p-2 border rounded-md" @blur="onBlur2" @click="onInput2" ref="input2Ref">
         <ul v-if="showDropdown2 && filtered2.length" class="dropdown-list w-full border rounded-md shadow-lg max-h-60 overflow-auto bg-white z-10 absolute top-full left-0 mt-1" @mousedown.prevent>
           <li v-for="item in filtered2" :key="item.instId" @click="select2(item)" class="px-4 py-2 hover:bg-gray-100 cursor-pointer">{{ item.instId }}</li>
         </ul>
       </div>
       <div class="input-group">
-        <label>データタイプ：</label>
+        <label>{{ $t('spread_tool.data_type') }}</label>
         <select v-model="dataType" class="w-full p-2 border rounded-md">
-          <option value="ohlc">OHLC</option>
-          <option value="depth">深度</option>
+          <option value="ohlc">{{ $t('spread_tool.ohlc') }}</option>
+          <option value="depth">{{ $t('spread_tool.depth') }}</option>
         </select>
       </div>
       <div v-if="dataType==='ohlc'" class="input-group">
-        <label>タイムフレーム：</label>
+        <label>{{ $t('spread_tool.timeframe') }}</label>
         <select v-model="timeframe" class="w-full p-2 border rounded-md">
           <option v-for="option in timeframeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
         </select>
       </div>
-      <button @click="calculateSpread" :disabled="!selected1 || !selected2" class="w-full p-2 bg-blue-500 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400">スプレッドを計算</button>
+      <button @click="calculateSpread" :disabled="!selected1 || !selected2" class="w-full p-2 bg-blue-500 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400">{{ $t('spread_tool.calculate_spread') }}</button>
       <div v-if="spread.length > 0" class="chart-container">
         <ApexKLineChartDualAxis
           :series="[...multiLineSeries, ...zScoreSeries]"
@@ -39,8 +39,8 @@
         />
       </div>
       <div v-if="spread.length > 0">
-        <h3>ボリンジャーバンドパラメータ</h3>
-        <div class="flex items-center gap-2">パラメータ：周期 <input type="number" v-model.number="bollPeriod" min="2" max="100" class="w-16 p-1 border rounded-md">，標準偏差倍数 <input type="number" v-model.number="bollStd" min="0.1" max="10" step="0.1" class="w-16 p-1 border rounded-md"> <button @click="calculateBollingerBands" class="p-1 bg-blue-500 text-white rounded-md hover:bg-blue-700">リフレッシュ</button></div>
+        <h3>{{ $t('spread_tool.bollinger_bands') }}</h3>
+        <div class="flex items-center gap-2">{{ $t('spread_tool.bollinger_params_label') }} <input type="number" v-model.number="bollPeriod" min="2" max="100" class="w-16 p-1 border rounded-md">，{{ $t('spread_tool.bollinger_std_dev_label') }} <input type="number" v-model.number="bollStd" min="0.1" max="10" step="0.1" class="w-16 p-1 border rounded-md"> <button @click="calculateBollingerBands" class="p-1 bg-blue-500 text-white rounded-md hover:bg-blue-700">{{ $t('spread_tool.refresh') }}</button></div>
       </div>
       <div v-if="error" class="error-message">{{ error }}</div>
     </div>
@@ -55,10 +55,12 @@ import NavBar from '../components/NavBar.vue'
 import { useAuthStore } from '../stores/auth'
 import { useExchangeStore } from '../stores/exchange'
 import ApexKLineChartDualAxis from '@/components/ApexKLineChartDualAxis.vue'
+import { useI18n } from 'vue-i18n'
 
 const baseURL = import.meta.env.VITE_API_BASE_URL
 const authStore = useAuthStore()
 const exchangeStore = useExchangeStore()
+const { t } = useI18n()
 
 const input1 = ref('')
 const input2 = ref('')
@@ -89,15 +91,15 @@ const bollStd = ref(2)
 const multiLineSeries = ref([])
 const zScoreSeries = ref([])
 
-const timeframeOptions = [
-  { value: '1m', label: '1分' },
-  { value: '5m', label: '5分' },
-  { value: '15m', label: '15分' },
-  { value: '1h', label: '1時間' },
-  { value: '4h', label: '4時間' },
-  { value: '12h', label: '12時間' },
-  { value: '1d', label: '1日' }
-]
+const timeframeOptions = computed(() => [
+  { value: '1m', label: t('spread_tool.timeframes.1m') },
+  { value: '5m', label: t('spread_tool.timeframes.5m') },
+  { value: '15m', label: t('spread_tool.timeframes.15m') },
+  { value: '1h', label: t('spread_tool.timeframes.1h') },
+  { value: '4h', label: t('spread_tool.timeframes.4h') },
+  { value: '12h', label: t('spread_tool.timeframes.12h') },
+  { value: '1d', label: t('spread_tool.timeframes.1d') }
+])
 
 const PAGE_SIZE = 1000
 
@@ -107,7 +109,7 @@ async function loadSubscribedInstruments() {
     const username = authStore.username || localStorage.getItem('username')
     const token = localStorage.getItem('token')
     if (!username || !token) {
-      error.value = 'ログインしてください';
+      error.value = t('spread_tool.error_login_required')
       return
     }
     const res = await axios.get(`${baseURL}/api/v1/subscription/user?username=${username}&exchange=${exchangeStore.selectedExchange}`, {
@@ -123,7 +125,7 @@ async function loadSubscribedInstruments() {
     })
     allInstruments.value = contracts
   } catch (e) {
-    error.value = '取得したサブスクリプトコントラクトに失敗しました'
+    error.value = t('spread_tool.error_fetch_instruments')
     allInstruments.value = []
   }
 }
@@ -254,7 +256,7 @@ function calculateBollingerBands() {
 
 async function calculateSpread(initial = true) {
   if (!selected1.value || !selected2.value) {
-    error.value = '2つのコントラクトを選択してください'
+    error.value = t('spread_tool.error_select_pair')
     return
   }
   error.value = ''
@@ -284,7 +286,7 @@ async function calculateSpread(initial = true) {
     const kline2 = resp2.data || []
     console.log('Received data:', kline1.length, 'for', selected1.value.instId, 'and', kline2.length, 'for', selected2.value.instId)
     if (kline1.length === 0 || kline2.length === 0) {
-      error.value = 'データが空であるため、スプレッドを計算できません'
+      error.value = t('spread_tool.error_fetch_data')
       return
     }
     
@@ -336,9 +338,12 @@ async function calculateSpread(initial = true) {
         console.warn('Timestamp discontinuity detected at index', i, ':', timestamps[i-1], 'to', timestamps[i])
       }
     }
+
+    calculateBollingerBands()
   } catch (e) {
-    console.error('スプレッド計算に失敗しました', e)
-    error.value = 'スプレッド計算に失敗しました：' + (e.response?.data?.message || e.message)
+    console.error('スプレッドの計算に失敗しました:', e)
+    error.value = t('spread_tool.error_calculation_fail', { error: e.message })
+    spread.value = []
   } finally {
     spreadLoadingMore.value = false
   }

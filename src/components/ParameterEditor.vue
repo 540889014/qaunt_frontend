@@ -12,10 +12,10 @@
           </tr>
         </thead>
         <tbody class="bg-white divide-y divide-gray-200">
-          <tr v-if="localParams.length === 0">
+          <tr v-if="!modelValue || modelValue.length === 0">
             <td colspan="4" class="px-6 py-4 text-center text-sm text-gray-500">{{ $t('templates.form.no_params_detected') }}</td>
           </tr>
-          <tr v-for="(param, index) in localParams" :key="index">
+          <tr v-for="(param, index) in modelValue" :key="index">
             <td class="px-6 py-4 whitespace-nowrap">
               <n-input :value="param.name" readonly disabled />
             </td>
@@ -23,10 +23,18 @@
               <n-input :value="param.defaultValue" readonly disabled />
             </td>
             <td class="px-6 py-4 whitespace-nowrap">
-              <n-select v-model:value="param.dataType" :options="dataTypeOptions" />
+              <n-select
+                :value="param.dataType"
+                :options="dataTypeOptions"
+                @update:value="newValue => updateParameter(index, 'dataType', newValue)"
+              />
             </td>
             <td class="px-6 py-4 whitespace-nowrap">
-              <n-select v-model:value="param.direction" :options="directionOptions" />
+              <n-select
+                :value="param.direction"
+                :options="directionOptions"
+                @update:value="newValue => updateParameter(index, 'direction', newValue)"
+              />
             </td>
           </tr>
         </tbody>
@@ -36,7 +44,7 @@
 </template>
 
 <script>
-import { defineComponent, ref, watch } from 'vue';
+import { defineComponent } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { NInput, NSelect } from 'naive-ui';
 
@@ -55,7 +63,6 @@ export default defineComponent({
   emits: ['update:modelValue'],
   setup(props, { emit }) {
     const { t } = useI18n();
-    const localParams = ref([...props.modelValue]);
 
     const dataTypeOptions = [
       { label: 'Integer', value: 'INT' },
@@ -70,20 +77,22 @@ export default defineComponent({
       { label: 'In/Out', value: 'INOUT' },
     ];
 
-    watch(() => props.modelValue, (newValue) => {
-      // Ensure we have a defensive copy to avoid direct prop mutation
-      localParams.value = JSON.parse(JSON.stringify(newValue));
-    }, { deep: true, immediate: true });
-
-    watch(localParams, (newValue) => {
-      emit('update:modelValue', newValue);
-    }, { deep: true });
+    const updateParameter = (index, key, value) => {
+      // Create a deep copy of the array to avoid direct prop mutation.
+      const newParams = JSON.parse(JSON.stringify(props.modelValue));
+      // Update the specific value.
+      if (newParams[index]) {
+        newParams[index][key] = value;
+      }
+      // Emit the entire new array to the parent.
+      emit('update:modelValue', newParams);
+    };
 
     return {
       t,
-      localParams,
       dataTypeOptions,
       directionOptions,
+      updateParameter,
     };
   },
 });

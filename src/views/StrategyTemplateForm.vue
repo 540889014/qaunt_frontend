@@ -23,8 +23,11 @@
               @change="handleFileChange"
             >
               <n-button>{{ $t('templates.form.select_file') }}</n-button>
-              <div v-if="fileName" class="ml-4 text-gray-600">{{ fileName }}</div>
             </n-upload>
+            <div v-if="fileName" class="ml-4 text-gray-600 flex items-center">
+              <span>{{ fileName }}</span>
+              <n-spin v-if="parsingFile" size="small" class="ml-2" />
+            </div>
             <div v-if="isEditMode && !fileName" class="ml-4 text-sm text-gray-500">{{ $t('templates.form.keep_existing_file') }}</div>
           </n-form-item>
 
@@ -39,17 +42,16 @@
     </div>
   </div>
 </template>
-
 <script>
-import { defineComponent, ref, onMounted, computed, watch } from 'vue';
+import { defineComponent, ref, onMounted, computed, onBeforeUnmount, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { useStrategyTemplateStore } from '@/stores/strategyTemplate';
 import { storeToRefs } from 'pinia';
-import { NForm, NFormItem, NInput, NButton, NUpload, useMessage } from 'naive-ui';
+import { NForm, NFormItem, NInput, NButton, NUpload, useMessage, NSpin } from 'naive-ui';
 import NavBar from '@/components/NavBar.vue';
 import ParameterEditor from '@/components/ParameterEditor.vue';
-import { parseStrategyParameters } from '@/utils/parameter-parser';
+import { parseStrategyParametersStream } from '@/utils/parameter-parser';
 
 export default defineComponent({
   name: 'StrategyTemplateForm',
@@ -61,6 +63,7 @@ export default defineComponent({
     NInput,
     NButton,
     NUpload,
+    NSpin,
   },
   setup() {
     const router = useRouter();
@@ -78,6 +81,7 @@ export default defineComponent({
       scriptFile: null,
     });
     const fileName = ref('');
+    const parsingFile = ref(false);
 
     const templateId = computed(() => route.params.id);
     const isEditMode = computed(() => !!templateId.value);
@@ -92,28 +96,38 @@ export default defineComponent({
       },
     };
     
-    const handleFileChange = ({ file }) => {
-      if (file.status === 'pending' || file.status === 'uploading') {
-          const reader = new FileReader();
-          reader.onload = (e) => {
-            const scriptContent = e.target.result;
-            const parsedParams = parseStrategyParameters(scriptContent);
-            
-            // In edit mode, merge with existing params to preserve settings like dataType
-            if (isEditMode.value && store.currentTemplate) {
-                formValue.value.parameters = parsedParams.map(p => {
-                    const existing = store.currentTemplate.parameters.find(ep => ep.name === p.name);
-                    return existing ? { ...p, dataType: existing.dataType, direction: existing.direction } : p;
-                });
-            } else {
-                formValue.value.parameters = parsedParams;
-            }
+    const handleFileChange = async ({ file }) => {
+      console.log('[Form] handleFileChange triggered with file:', file.name, 'status:', file.status);
+      if ((file.status === 'pending' || file.status === 'uploading') && file.file) {
+        parsingFile.value = true;
+        formValue.value.scriptFile = file.file;
+        fileName.value = file.name;
+        
+        try {
+          console.log('[Form] File object is present, getting stream...');
+          const stream = file.file.stream();
+          console.log('[Form] Stream obtained, calling parser...');
+          const parsedParams = await parseStrategyParametersStream(stream);
+          console.log('[Form] Parser finished, params received:', parsedParams);
 
-            formValue.value.scriptFile = file.file;
-            fileName.value = file.name;
-          };
-          reader.readAsText(file.file);
+          if (isEditMode.value && store.currentTemplate?.parameters) {
+            formValue.value.parameters = parsedParams.map(p => {
+              const existing = store.currentTemplate.parameters.find(ep => ep.name === p.name);
+              return existing ? { ...p, dataType: existing.dataType, direction: existing.direction } : p;
+            });
+          } else {
+            formValue.value.parameters = parsedParams;
+          }
+        } catch (error) {
+          message.error(`Failed to parse parameters: ${error.message}`);
+          formValue.value.parameters = [];
+        } finally {
+          parsingFile.value = false;
+          console.log('[Form] Parsing process finished (finally block).');
+        }
+
       } else if (file.status === 'removed') {
+        console.log('[Form] File removed.');
         formValue.value.scriptFile = null;
         fileName.value = '';
         formValue.value.parameters = [];
@@ -174,10 +188,11 @@ export default defineComponent({
       rules,
       isEditMode,
       loading,
+      parsingFile,
       handleFileChange,
       handleSubmit,
       handleCancel,
     };
   },
 });
-</script> 
+</script>

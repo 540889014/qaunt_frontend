@@ -34,9 +34,15 @@
         <button @click="recalculateIndices" class="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600">{{ $t('statistical_arbitrage.update_indicators') }}</button>
       </div>
       <div class="flex flex-col gap-6">
+        <!-- ADF Results -->
         <div class="bg-white p-6 rounded-lg shadow-md">
-          <h2 class="text-xl font-semibold mb-4 text-gray-700">{{ $t('statistical_arbitrage.adf_results') }}</h2>
-          <table class="min-w-full divide-y divide-gray-200">
+          <div @click="toggleVisibility('adf')" class="cursor-pointer flex justify-between items-center">
+            <h2 class="text-xl font-semibold text-gray-700">{{ $t('statistical_arbitrage.adf_results') }}</h2>
+            <svg class="w-6 h-6 transform transition-transform" :class="{ 'rotate-180': !isAdfVisible }" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            </svg>
+          </div>
+          <table v-if="isAdfVisible" class="min-w-full divide-y divide-gray-200 mt-4">
             <thead class="bg-gray-50">
               <tr>
                 <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ $t('statistical_arbitrage.pair') }}</th>
@@ -56,9 +62,15 @@
             </tbody>
           </table>
         </div>
+        <!-- KPSS Results -->
         <div class="bg-white p-6 rounded-lg shadow-md">
-          <h2 class="text-xl font-semibold mb-4 text-gray-700">{{ $t('statistical_arbitrage.kpss_results') }}</h2>
-          <table class="min-w-full divide-y divide-gray-200">
+           <div @click="toggleVisibility('kpss')" class="cursor-pointer flex justify-between items-center">
+            <h2 class="text-xl font-semibold text-gray-700">{{ $t('statistical_arbitrage.kpss_results') }}</h2>
+            <svg class="w-6 h-6 transform transition-transform" :class="{ 'rotate-180': !isKpssVisible }" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            </svg>
+          </div>
+          <table v-if="isKpssVisible" class="min-w-full divide-y divide-gray-200 mt-4">
             <thead class="bg-gray-50">
               <tr>
                 <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ $t('statistical_arbitrage.pair') }}</th>
@@ -78,9 +90,15 @@
             </tbody>
           </table>
         </div>
+        <!-- Hurst Results -->
         <div class="bg-white p-6 rounded-lg shadow-md">
-          <h2 class="text-xl font-semibold mb-4 text-gray-700">{{ $t('statistical_arbitrage.hurst_results') }}</h2>
-          <table class="min-w-full divide-y divide-gray-200">
+          <div @click="toggleVisibility('hurst')" class="cursor-pointer flex justify-between items-center">
+            <h2 class="text-xl font-semibold text-gray-700">{{ $t('statistical_arbitrage.hurst_results') }}</h2>
+            <svg class="w-6 h-6 transform transition-transform" :class="{ 'rotate-180': !isHurstVisible }" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            </svg>
+          </div>
+          <table v-if="isHurstVisible" class="min-w-full divide-y divide-gray-200 mt-4">
             <thead class="bg-gray-50">
               <tr>
                 <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ $t('statistical_arbitrage.pair') }}</th>
@@ -124,7 +142,10 @@ export default {
       hurstSortDirection: '',
       selectedExchange: 'okx',
       selectedTimeframe: '1h',
-      exchanges: []
+      exchanges: [],
+      isAdfVisible: true,
+      isKpssVisible: true,
+      isHurstVisible: true,
     }
   },
   created() {
@@ -132,6 +153,15 @@ export default {
     this.fetchResults()
   },
   methods: {
+    toggleVisibility(type) {
+      if (type === 'adf') {
+        this.isAdfVisible = !this.isAdfVisible;
+      } else if (type === 'kpss') {
+        this.isKpssVisible = !this.isKpssVisible;
+      } else if (type === 'hurst') {
+        this.isHurstVisible = !this.isHurstVisible;
+      }
+    },
     getAuthToken() {
       const token = localStorage.getItem('token') || ''
       console.log('Retrieved auth token from localStorage:', token)
