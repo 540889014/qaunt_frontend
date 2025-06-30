@@ -12,7 +12,8 @@
             "login": "ログイン",
             "logout": "ログアウト",
             "welcome": "ようこそ、{username}様",
-            "strategy_templates": "戦略テンプレート"
+            "strategy_templates": "戦略テンプレート",
+            "backtest_instances": "バックテストインスタンス"
         },
         "login": {
             "title": "アカウントにログイン",
@@ -166,7 +167,8 @@
             "errors": {
                 "failed_to_start": "バックテストの開始に失敗しました。詳細についてはログを確認してください。",
                 "general_error": "予期せぬエラーが発生しました。"
-            }
+            },
+            "load_template": "テンプレートをロード"
         },
         "templates": {
             "title": "戦略テンプレート",
@@ -184,9 +186,10 @@
                 "parameters_title": "戦略パラメータ",
                 "param_name": "パラメータ名",
                 "param_default_value": "デフォルト値",
+                "param_value": "値",
                 "param_data_type": "データ型",
                 "param_direction": "方向",
-                "no_params_detected": "スクリプトファイルでパラメータが検出されませんでした。ファイルをアップロードしてパラメータを表示してください。",
+                "no_params_detected": "パラメータが検出されないか、スクリプトが空です。",
                 "edit_title": "戦略テンプレートを編集",
                 "create_title": "新しい戦略テンプレートを作成",
                 "name_placeholder": "戦略名を入力",
@@ -210,7 +213,50 @@
             "save": "保存",
             "all_exchanges": "すべての取引所",
             "close": "閉じる",
-            "none": "なし"
+            "none": "なし",
+            "actions": "操作",
+            "view_edit_code": "コードの表示/編集",
+            "code_editor": "コードエディタ",
+            "run": "実行",
+            "error_unexpected": "予期せぬエラーが発生しました。",
+            "true": "はい",
+            "false": "いいえ",
+            "please_input": "入力してください",
+            "please_select": "選択してください"
+        },
+        "backtest_instances": {
+            "title": "バックテストインスタンス",
+            "create": "新規インスタンス",
+            "name": "インスタンス名",
+            "strategy_template_id": "テンプレートID",
+            "status": "ステータス",
+            "created_at": "作成日時",
+            "updated_at": "更新日時",
+            "actions": "アクション",
+            "delete_confirm_title": "インスタンスを削除",
+            "delete_confirm_content": "このバックテストインスタンスを削除してもよろしいですか？",
+            "delete_success_message": "インスタンスが正常に削除されました。",
+            "delete_fail_message": "インスタンスの削除に失敗しました。",
+            "run_success_message": "バックテストが正常に開始されました。",
+            "run_fail_message": "バックテストの開始に失敗しました。",
+            "form": {
+                "edit_title": "バックテストインスタンスの編集",
+                "create_title": "新規バックテストインスタンスの作成",
+                "name_placeholder": "インスタンス名を入力",
+                "strategy_template": "戦略テンプレート",
+                "strategy_template_placeholder": "テンプレートを選択",
+                "name_required": "インスタンス名は必須です。",
+                "strategy_template_required": "戦略テンプレートは必須です。",
+                "start_time": "開始時間",
+                "end_time": "終了時間",
+                "start_time_required": "開始時間は必須です。",
+                "end_time_required": "終了時間は必須です。",
+                "symbols": "シンボル",
+                "symbol_placeholder": "例: BTC-USDT",
+                "add_symbol": "シンボルを追加",
+                "update_success_message": "インスタンスが正常に更新されました。",
+                "create_success_message": "インスタンスが正常に作成されました。"
+            }
         }
     }
 }

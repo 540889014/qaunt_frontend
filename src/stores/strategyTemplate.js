@@ -36,9 +36,11 @@ export const useStrategyTemplateStore = defineStore('strategyTemplate', {
         const response = await api.getStrategyTemplateById(id);
         this.currentTemplate = response.data;
         this.error = null;
+        return response.data;
       } catch (error) {
         this.error = error.message || `Failed to fetch template with id ${id}.`;
         this.currentTemplate = null;
+        throw error;
       } finally {
         this.loading = false;
       }

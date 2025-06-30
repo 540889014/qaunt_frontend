@@ -1,9 +1,10 @@
 import axios from 'axios'
 import { useAuthStore } from '../stores/auth'
 import { handleApiError } from '../utils/error-handler'
+import i18n from '@/i18n'
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL,
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api',
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json'
@@ -14,25 +15,29 @@ const api = axios.create({
 api.interceptors.request.use(
   (config) => {
     const authStore = useAuthStore()
-    if (authStore.token) {
-      config.headers.Authorization = `Bearer ${authStore.token}`
+    const token = authStore.token
+    if (token) {
+      config.headers['Authorization'] = `Bearer ${token}`
     }
     return config
   },
-  (error) => Promise.reject(error)
+  (error) => {
+    return Promise.reject(error)
+  }
 )
 
 // 响应拦截器
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    const errorInfo = handleApiError(error)
-    if (errorInfo.type === 'AUTH_ERROR') {
+  async (error) => {
+    if (error.response && error.response.status === 401) {
       const authStore = useAuthStore()
       authStore.logout()
-      window.location.href = '/'
+      const router = (await import('@/router')).default
+      router.push('/login')
     }
-    return Promise.reject(errorInfo)
+    errorHandler(error)
+    return Promise.reject(error)
   }
 )
 
@@ -84,6 +89,8 @@ export const getStrategyTemplateById = (id) => {
   return api.get(`/api/strategy-templates/${id}`)
 }
 
+export const getStrategyTemplateScript = (id) => api.get(`/strategy-templates/${id}/script`)
+
 export const createStrategyTemplate = (formData) => {
   return api.post('/api/strategy-templates', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
@@ -99,5 +106,31 @@ export const updateStrategyTemplate = (id, formData) => {
 export const deleteStrategyTemplate = (id) => {
   return api.delete(`/api/strategy-templates/${id}`)
 }
+
+// --- Backtest Instances API ---
+
+export const getBacktestInstances = (page = 0, size = 10, sort = 'createdAt,desc') => {
+  return api.get('/api/backtest-instances', { params: { page, size, sort } });
+};
+
+export const getBacktestInstance = (id) => {
+  return api.get(`/api/backtest-instances/${id}`);
+};
+
+export const createBacktestInstance = (data) => {
+  return api.post('/api/backtest-instances', data);
+};
+
+export const updateBacktestInstance = (id, data) => {
+  return api.put(`/api/backtest-instances/${id}`, data);
+};
+
+export const deleteBacktestInstance = (id) => {
+  return api.delete(`/api/backtest-instances/${id}`);
+};
+
+export const runBacktestInstance = (id) => {
+  return api.post(`/api/backtest-instances/${id}/run`);
+};
 
 export default api 

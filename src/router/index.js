@@ -8,6 +8,8 @@ import Backtest from '../views/Backtest.vue'
 import UserManagement from '@/views/UserManagement.vue'
 import StrategyTemplateList from '@/views/StrategyTemplateList.vue'
 import StrategyTemplateForm from '@/views/StrategyTemplateForm.vue'
+import BacktestInstanceList from '@/views/BacktestInstanceList.vue'
+import BacktestInstanceForm from '@/views/BacktestInstanceForm.vue'
 import { useAuthStore } from '../stores/auth'
 
 const routes = [
@@ -73,6 +75,24 @@ const routes = [
     path: '/strategy-templates/:id/edit',
     name: 'StrategyTemplateEdit',
     component: StrategyTemplateForm,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/backtest-instances',
+    name: 'BacktestInstanceList',
+    component: BacktestInstanceList,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/backtest-instances/new',
+    name: 'BacktestInstanceCreate',
+    component: BacktestInstanceForm,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/backtest-instances/:id/edit',
+    name: 'BacktestInstanceEdit',
+    component: BacktestInstanceForm,
     meta: { requiresAuth: true }
   }
 ]

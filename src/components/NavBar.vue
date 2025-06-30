@@ -9,6 +9,7 @@
               <router-link to="/dashboard" class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium">{{ $t('nav.dashboard') }}</router-link>
               <router-link to="/backtest" class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium">{{ $t('nav.backtest') }}</router-link>
               <router-link to="/strategy-templates" class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium">{{ $t('nav.strategy_templates') }}</router-link>
+              <router-link to="/backtest-instances" class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium">{{ $t('nav.backtest_instances') }}</router-link>
               <router-link to="/spread-tool" class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium">{{ $t('nav.spread_tool') }}</router-link>
               <router-link to="/statistical-arbitrage" class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium">{{ $t('nav.statistical_arbitrage') }}</router-link>
               <router-link to="/subscriptions" class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium">{{ $t('nav.subscriptions') }}</router-link>
@@ -58,6 +59,7 @@ export default {
 
     const isLoggedIn = computed(() => authStore.isAuthenticated);
     const username = computed(() => authStore.username);
+    const isAdmin = computed(() => authStore.user?.role === 'ADMIN');
     
     const currentLocale = ref(locale.value);
 
@@ -74,6 +76,7 @@ export default {
     return {
       isLoggedIn,
       username,
+      isAdmin,
       logout,
       t,
       currentLocale,

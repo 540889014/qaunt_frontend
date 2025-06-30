@@ -6,7 +6,7 @@
         <thead class="bg-gray-50">
           <tr>
             <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ $t('templates.form.param_name') }}</th>
-            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ $t('templates.form.param_default_value') }}</th>
+            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ $t('templates.form.param_value') }}</th>
             <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ $t('templates.form.param_data_type') }}</th>
             <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ $t('templates.form.param_direction') }}</th>
           </tr>
@@ -20,7 +20,11 @@
               <n-input :value="param.name" readonly disabled />
             </td>
             <td class="px-6 py-4 whitespace-nowrap">
-              <n-input :value="param.defaultValue" readonly disabled />
+              <n-input
+                :value="param.value"
+                @update:value="newValue => updateParameter(index, 'value', newValue)"
+                :placeholder="param.defaultValue || $t('common.please_input')"
+              />
             </td>
             <td class="px-6 py-4 whitespace-nowrap">
               <n-select
@@ -46,13 +50,14 @@
 <script>
 import { defineComponent } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { NInput, NSelect } from 'naive-ui';
+import { NInput, NSelect, NButton } from 'naive-ui';
 
 export default defineComponent({
   name: 'ParameterEditor',
   components: {
     NInput,
     NSelect,
+    NButton,
   },
   props: {
     modelValue: {
@@ -88,11 +93,18 @@ export default defineComponent({
       emit('update:modelValue', newParams);
     };
 
+    const deleteParameter = (index) => {
+      const newParams = JSON.parse(JSON.stringify(props.modelValue));
+      newParams.splice(index, 1);
+      emit('update:modelValue', newParams);
+    };
+
     return {
       t,
       dataTypeOptions,
       directionOptions,
       updateParameter,
+      deleteParameter,
     };
   },
 });

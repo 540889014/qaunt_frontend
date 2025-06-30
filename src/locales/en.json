@@ -9,7 +9,9 @@
            "login": "Login",
            "logout": "Logout",
            "welcome": "Welcome, {username}",
-           "strategy_templates": "Strategy Templates"
+           "strategy_templates": "Strategy Templates",
+           "backtest_instances": "Backtest Instances",
+           "user_management": "User Management"
          },
          "login": {
            "title": "Login to your account",
@@ -180,9 +182,10 @@
              "parameters_title": "Strategy Parameters",
              "param_name": "Parameter Name",
              "param_default_value": "Default Value",
+             "param_value": "Value",
              "param_data_type": "Data Type",
              "param_direction": "Direction",
-             "no_params_detected": "No parameters detected in the script file. Please upload a file to see its parameters.",
+             "no_params_detected": "No parameters detected or script is empty.",
              "edit_title": "Edit Strategy Template",
              "create_title": "Create New Strategy Template",
              "name_placeholder": "Enter strategy name",
@@ -198,13 +201,58 @@
              "validation_fail": "Please correct the errors before submitting."
            }
          },
+         "backtest_instances": {
+           "title": "Backtest Instances",
+           "create": "New Instance",
+           "name": "Instance Name",
+           "strategy_template_id": "Template ID",
+           "status": "Status",
+           "created_at": "Created At",
+           "updated_at": "Updated At",
+           "actions": "Actions",
+           "delete_confirm_title": "Delete Instance",
+           "delete_confirm_content": "Are you sure you want to delete this backtest instance?",
+           "delete_success_message": "Instance deleted successfully.",
+           "delete_fail_message": "Failed to delete instance.",
+           "run_success_message": "Backtest started successfully.",
+           "run_fail_message": "Failed to start backtest.",
+           "form": {
+             "edit_title": "Edit Backtest Instance",
+             "create_title": "Create New Backtest Instance",
+             "name_placeholder": "Enter instance name",
+             "strategy_template": "Strategy Template",
+             "strategy_template_placeholder": "Select a template",
+             "name_required": "Instance name is required.",
+             "strategy_template_required": "Strategy template is required.",
+             "start_time": "Start Time",
+             "end_time": "End Time",
+             "start_time_required": "Start time is required.",
+             "end_time_required": "End time is required.",
+             "symbols": "Symbols",
+             "symbol_placeholder": "e.g., BTC-USDT-SWAP.okx",
+             "add_symbol": "Add Symbol",
+             "update_success_message": "Instance updated successfully.",
+             "create_success_message": "Instance created successfully."
+           }
+         },
          "common": {
            "all_exchanges": "All Exchanges",
            "edit": "Edit",
            "delete": "Delete",
            "confirm": "Confirm",
            "cancel": "Cancel",
-           "save": "Save"
+           "save": "Save",
+           "close": "Close",
+           "none": "None",
+           "actions": "Actions",
+           "view_edit_code": "View/Edit Code",
+           "code_editor": "Code Editor",
+           "run": "Run",
+           "error_unexpected": "An unexpected error occurred.",
+           "true": "True",
+           "false": "False",
+           "please_input": "Please Input",
+           "please_select": "Please Select"
          }
        }
        

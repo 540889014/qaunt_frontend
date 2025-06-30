@@ -22,7 +22,6 @@ export async function parseStrategyParametersStream(stream) {
       const { done, value } = await reader.read();
       if (done) {
         console.log('[Parser] Stream finished.');
-        // Process any remaining text
         if (leftover) {
           console.log('[Parser] Processing leftover line.');
           processLine(leftover);
@@ -34,7 +33,6 @@ export async function parseStrategyParametersStream(stream) {
       const chunk = decoder.decode(value, { stream: true });
       const lines = (leftover + chunk).split('\n');
       
-      // The last line might be incomplete, so save it for the next chunk
       leftover = lines.pop() || '';
 
       for (const line of lines) {
@@ -48,23 +46,18 @@ export async function parseStrategyParametersStream(stream) {
   }
   
   function processLine(line) {
-    // Trim whitespace to correctly detect empty lines and content
     const trimmedLine = line.trim();
     if (!trimmedLine) return;
 
-    // Check for start of the class
     if (/class\s+Strategy/.test(trimmedLine)) {
       inClassBody = true;
-      return; // Continue to the next line
+      return;
     }
 
-    // Check for end of class attributes (start of a method)
     if (inClassBody && /^\s*def\s+/.test(trimmedLine)) {
       inClassBody = false;
-      // Fall through to check for @param on the same line
     }
 
-    // 1. Parse class attributes
     if (inClassBody) {
       const paramMatch = trimmedLine.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*([0-9.-]+|'[^']*'|"[^"]*")/);
       if (paramMatch) {
@@ -77,7 +70,6 @@ export async function parseStrategyParametersStream(stream) {
       }
     }
 
-    // 2. Parse @param annotations anywhere in the file
     const annotationMatch = trimmedLine.match(/@param\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*([0-9.-]+|'[^']*'|"[^"]*")/);
     if (annotationMatch) {
       const key = annotationMatch[1];
@@ -91,4 +83,70 @@ export async function parseStrategyParametersStream(stream) {
 
   console.log('[Parser] Parsing complete, found params:', params);
   return params;
-} 
+}
+
+/**
+ * Parses the number of legs from a strategy script's content.
+ * It robustly handles two styles of leg definition:
+ * 1. Explicit: `self.leg1`, `self.leg2`, etc.
+ * 2. Implicit: Arguments in `on_receive_ohlc(self, ohlc1, ohlc2)`
+ *
+ * @param {string} scriptContent The full content of the Python script.
+ * @returns {number} The number of legs detected.
+ */
+export function parseNumLegsFromScript(scriptContent) {
+  if (!scriptContent) {
+    return 0;
+  }
+
+  // Strategy 1: Explicit `self.legX` definitions
+  const legMatches = scriptContent.match(/\bself\.leg(\d+)\b/g);
+  if (legMatches && legMatches.length > 0) {
+    let maxLeg = 0;
+    for (const match of legMatches) {
+      const legNum = parseInt(match.match(/\d+/)[0], 10);
+      if (legNum > maxLeg) {
+        maxLeg = legNum;
+      }
+    }
+    return maxLeg;
+  }
+
+  // Strategy 2: Implicitly from function arguments if self.legX is not found
+  const lines = scriptContent.split(/\r?\n/);
+  let maxLegsFromArgs = 0;
+  const lifecycleMethods = ['on_receive_ohlc', 'on_receive_marketdata'];
+
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+    if (!trimmedLine.startsWith('def ')) continue;
+
+    for (const methodName of lifecycleMethods) {
+      if (trimmedLine.includes(methodName)) {
+        // Correct regex to capture content within parentheses
+        const argMatch = trimmedLine.match(/\((.*)\)/);
+        if (argMatch && argMatch[1]) {
+          const args = argMatch[1].split(',').map(arg => arg.trim().split(':')[0]);
+          
+          let currentLegs = 0;
+          for (const arg of args) {
+            if (arg !== 'self' && (arg.startsWith('ohlc') || arg.startsWith('md'))) {
+              currentLegs++;
+            }
+          }
+          if (currentLegs > maxLegsFromArgs) {
+            maxLegsFromArgs = currentLegs;
+          }
+        }
+        break;
+      }
+    }
+  }
+
+  if (maxLegsFromArgs > 0) {
+    return maxLegsFromArgs;
+  }
+  
+  // Fallback: If no legs found by either method, but there is content, assume 1 leg.
+  return scriptContent.trim().length > 0 ? 1 : 0;
+}
