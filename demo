@@ -1,0 +1,79 @@
+@startuml
+' --- Styling Settings ---
+skinparam backgroundColor #FFFFFF
+skinparam state {
+  BackgroundColor<<Main>> #E3F2FD
+  BorderColor #1976D2
+  ArrowColor #546E7A
+  FontName "Arial"
+  FontSize 12
+}
+skinparam NoteBackgroundColor #FFF9C4
+skinparam NoteBorderColor #FBC02D
+
+title Business Process State Transition Diagram
+
+' --- Flow Definitions ---
+
+[*] --> Automatic_Review
+
+state "Automatic Review" as Automatic_Review <<Main>>
+note left of Automatic_Review
+  - Waiting for Review
+  - Review in Progress
+  - Review Completed
+end note
+
+' Branch after Automatic Review
+Automatic_Review --> Auto_Assignment_Standard : OK
+Automatic_Review --> Auto_Assignment_Attention : NG
+
+state "Auto Assignment (Standard)" as Auto_Assignment_Standard <<Main>>
+Auto_Assignment_Standard --> Certification_Review
+
+state "Certification Review" as Certification_Review <<Main>>
+note bottom of Certification_Review
+  - Reviewing Certification
+  - Confirmation Completed
+end note
+Certification_Review --> Result_Notification_Travel_Authorized
+
+' --- Careful Review (Attention) Branch ---
+state "Auto Assignment (Attention)" as Auto_Assignment_Attention <<Main>>
+Auto_Assignment_Attention --> Careful_Review_Drafting
+
+state "Careful Review Drafting" as Careful_Review_Drafting <<Main>>
+note bottom of Careful_Review_Drafting
+  - Under Review
+  - Certified
+  - Not Certified
+  - Remand in Progress
+end note
+
+Careful_Review_Drafting --> Review_Decision_Certified : Submit
+Careful_Review_Drafting --> Review_Decision_Not_Certified : Submit
+
+state "Review Decision (Certified)" as Review_Decision_Certified <<Main>>
+Review_Decision_Certified --> Final_Decision_Certified : Approve
+Review_Decision_Certified --> Careful_Review_Drafting : Remand
+
+state "Review Decision (Not Certified)" as Review_Decision_Not_Certified <<Main>>
+Review_Decision_Not_Certified --> Final_Decision_Not_Certified : Approve
+Review_Decision_Not_Certified --> Careful_Review_Drafting : Remand
+
+state "Final Decision (Certified)" as Final_Decision_Certified <<Main>>
+Final_Decision_Certified --> Result_Notification_Travel_Authorized : Approve
+Final_Decision_Certified --> Careful_Review_Drafting : Remand
+
+state "Final Decision (Not Certified)" as Final_Decision_Not_Certified <<Main>>
+Final_Decision_Not_Certified --> Result_Notification_Travel_Denied : Approve
+Final_Decision_Not_Certified --> Careful_Review_Drafting : Remand
+
+' --- Final States ---
+state "Result Notification\n(Travel Authorized)" as Result_Notification_Travel_Authorized <<Main>>
+state "Result Notification\n(Travel Denied)" as Result_Notification_Travel_Denied <<Main>>
+
+Result_Notification_Travel_Authorized --> [*]
+Result_Notification_Travel_Denied --> [*]
+
+@enduml
