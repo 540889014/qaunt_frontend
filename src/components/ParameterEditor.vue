@@ -9,6 +9,7 @@
             <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ $t('templates.form.param_value') }}</th>
             <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ $t('templates.form.param_data_type') }}</th>
             <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ $t('templates.form.param_direction') }}</th>
+            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ $t('common.actions') }}</th>
           </tr>
         </thead>
         <tbody class="bg-white divide-y divide-gray-200">
@@ -39,6 +40,9 @@
                 :options="directionOptions"
                 @update:value="newValue => updateParameter(index, 'direction', newValue)"
               />
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap">
+              <n-button type="error" size="small" @click="deleteParameter(index)">{{ $t('common.delete') }}</n-button>
             </td>
           </tr>
         </tbody>

@@ -10,6 +10,18 @@
         </button>
       </div>
 
+      <div class="tabs">
+        <button
+          v-for="asset in assetTypes"
+          :key="asset.type"
+          @click="activeAssetTypeTab = asset.type"
+          :class="['tab-button', { 'active': activeAssetTypeTab === asset.type, 'disabled': asset.disabled }]"
+          :disabled="asset.disabled"
+        >
+          {{ $t(asset.label) }}
+        </button>
+      </div>
+
       <ErrorMessage
         v-if="error"
         :message="error"
@@ -59,7 +71,7 @@
       <div class="modal-content">
         <h2>{{ $t('subscriptions.add_modal_title') }}</h2>
         <form @submit.prevent="handleSubmit">
-          <div class="form-group">
+          <div class="form-group" v-if="activeAssetTypeTab === 'CRYPTO'">
             <label for="exchange" class="form-label">{{ $t('subscriptions.exchange') }}</label>
             <select id="exchange" v-model="subscriptionForm.exchange" class="form-input" required>
               <option v-for="exchange in exchangeStore.exchanges" :key="exchange" :value="exchange">
@@ -67,7 +79,7 @@
               </option>
             </select>
           </div>
-          <div class="form-group">
+          <div class="form-group" v-if="activeAssetTypeTab === 'CRYPTO'">
             <label for="instType" class="form-label">{{ $t('subscriptions.asset_type') }}</label>
             <select id="instType" v-model="selectedInstType" class="form-input" required>
               <option v-for="option in instTypeOptions" :key="option.value" :value="option.value">
@@ -86,15 +98,15 @@
               @focus="onSymbolInput"
               autocomplete="off"
               required
-              :disabled="!selectedInstType || !subscriptionForm.exchange"
+              :disabled="activeAssetTypeTab === 'CRYPTO' && (!selectedInstType || !subscriptionForm.exchange)"
             />
             <ul v-if="showSymbolDropdown && filteredSymbols.length" class="dropdown-list">
-              <li v-for="item in filteredSymbols" :key="item.instId" @click="selectSymbol(item)">
-                {{ item.instId }}
+              <li v-for="item in filteredSymbols" :key="item.instId || item.symbol" @click="selectSymbol(item)">
+                {{ item.instId || item.symbol }}
               </li>
             </ul>
           </div>
-          <div class="form-group">
+          <div class="form-group" v-if="activeAssetTypeTab === 'CRYPTO'">
             <label for="dataType" class="form-label">{{ $t('subscriptions.data_type') }}</label>
             <select id="dataType" v-model="selectedDataType" class="form-input" required>
               <option v-for="option in dataTypeOptions" :key="option.value" :value="option.value">
@@ -106,7 +118,7 @@
             <label for="timeframe" class="form-label">{{ $t('subscriptions.kline_period') }}</label>
             <select id="timeframe" v-model="selectedTimeframe" class="form-input" v-if="showTimeframe">
               <option v-for="option in timeframeOptions" :key="option.value" :value="option.value">
-                {{ $t(option.label) }}
+                {{ option.label }}
               </option>
             </select>
           </div>
@@ -138,12 +150,18 @@ import { ref, onMounted, onUnmounted, computed, watch, reactive } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useAuthStore } from '@/stores/auth';
 import { useExchangeStore } from '@/stores/exchange';
-import { getSubscriptionsByUsername, subscribe, unsubscribe, getKlineData } from '../api';
+import { 
+  getSubscriptionsByUsername, 
+  subscribe, 
+  unsubscribe, 
+  getKlineData, 
+  getAllForexMetadata,
+  getMarketInstruments 
+} from '../api';
 import NavBar from '../components/NavBar.vue';
 import LoadingSpinner from '../components/LoadingSpinner.vue';
 import ErrorMessage from '../components/ErrorMessage.vue';
 import ApexKLineChart from '../components/ApexKLineChart.vue';
-import axios from 'axios';
 import { useRouter } from 'vue-router';
 
 const { t } = useI18n();
@@ -157,11 +175,20 @@ const loading = ref(false);
 const error = ref('');
 const router = useRouter();
 
+const assetTypes = [
+  { type: 'CRYPTO', label: 'subscriptions.asset_type_crypto', disabled: false },
+  { type: 'FOREX', label: 'subscriptions.asset_type_forex', disabled: false },
+  { type: 'NIKKEI', label: 'subscriptions.asset_type_nikkei', disabled: true },
+  { type: 'US_STOCK', label: 'subscriptions.asset_type_us_stock', disabled: true },
+];
+
+const activeAssetTypeTab = ref('CRYPTO');
+
 const dataTypeOptions = [
   { value: 'ohlc', label: 'subscriptions.kline' },
   { value: 'depth', label: 'subscriptions.depth' }
 ];
-const timeframeOptions = [
+const cryptoTimeframeOptions = [
   { value: '1m', label: '1m' },
   { value: '3m', label: '3m' },
   { value: '5m', label: '5m' },
@@ -174,8 +201,34 @@ const timeframeOptions = [
   { value: '12H', label: '12H' },
   { value: '1D', label: '1D' }
 ];
+const forexTimeframeOptions = [
+  { value: '5m', label: '5m' },
+  { value: '15m', label: '15m' },
+  { value: '30m', label: '30m' },
+  { value: '1H', label: '1H' },
+  { value: '1D', label: '1D' }
+];
+
+const timeframeOptions = computed(() => {
+  return activeAssetTypeTab.value === 'FOREX' ? forexTimeframeOptions : cryptoTimeframeOptions;
+});
+
 const selectedDataType = ref('ohlc');
 const selectedTimeframe = ref('1m');
+
+watch(activeAssetTypeTab, (newTab) => {
+  subscriptionForm.value.symbol = '';
+  filteredSymbols.value = [];
+  if (newTab === 'FOREX') {
+    selectedDataType.value = 'ohlc';
+    selectedTimeframe.value = forexTimeframeOptions[0].value;
+    subscriptionForm.value.exchange = 'fxcm';
+  } else { // CRYPTO
+    selectedDataType.value = 'ohlc';
+    selectedTimeframe.value = cryptoTimeframeOptions[0].value;
+    subscriptionForm.value.exchange = 'okx';
+  }
+});
 
 const subscriptionForm = ref({
   symbol: '',
@@ -195,26 +248,35 @@ const instTypeOptions = [
 const selectedInstType = ref('SWAP');
 
 const allInstruments = ref([]);
+const allForexPairs = ref([]);
 const filteredSymbols = ref([]);
 const showSymbolDropdown = ref(false);
 
 const baseURL = import.meta.env.VITE_API_BASE_URL;
 
 const fetchInstruments = async () => {
+  if (activeAssetTypeTab.value !== 'CRYPTO') return;
   try {
-    const response = await axios.get(`${baseURL}/api/v1/market/instruments`, {
-      params: { instType: selectedInstType.value, exchange: subscriptionForm.value.exchange },
-      headers: { 'Authorization': `Bearer ${authStore.token}` }
-    });
-    allInstruments.value = response.data || [];
+    const response = await getMarketInstruments(selectedInstType.value, subscriptionForm.value.exchange);
+    allInstruments.value = response || [];
   } catch (err) {
     console.error('Failed to fetch instruments:', err);
     allInstruments.value = [];
   }
 };
 
+const fetchForexPairs = async () => {
+  try {
+    const response = await getAllForexMetadata();
+    allForexPairs.value = response || [];
+  } catch (err) {
+    console.error('Failed to fetch forex pairs:', err);
+    allForexPairs.value = [];
+  }
+};
+
 watch([selectedInstType, () => subscriptionForm.value.exchange], () => {
-  if (selectedInstType.value && subscriptionForm.value.exchange) {
+  if (subscriptionForm.value.exchange) {
     fetchInstruments();
   }
 });
@@ -223,8 +285,8 @@ const fetchSubscriptions = async () => {
   loading.value = true;
   error.value = '';
   try {
-    const response = await getSubscriptionsByUsername(authStore.username, exchangeStore.selectedExchange);
-    subscriptions.value = response.data || [];
+    const response = await getSubscriptionsByUsername(authStore.username);
+    subscriptions.value = response || [];
   } catch (err) {
     error.value = t('subscriptions.load_list_fail');
     console.error('Failed to fetch subscriptions:', err);
@@ -235,14 +297,32 @@ const fetchSubscriptions = async () => {
 
 const handleSubmit = async () => {
   try {
+    const assetType = activeAssetTypeTab.value;
+    let { exchange, symbol } = subscriptionForm.value;
+    let instType = selectedInstType.value;
+    let timeframe = selectedTimeframe.value;
+    let dataType = selectedDataType.value;
+
+    if (assetType === 'FOREX') {
+      exchange = 'fxcm';
+      instType = assetType;
+    }
+    
+    // When dataType is 'depth', timeframe is not applicable
+    if (dataType === 'depth') {
+      timeframe = '';
+    }
+
     await subscribe(
       authStore.username,
-      subscriptionForm.value.symbol,
-      selectedDataType.value,
-      selectedInstType.value,
-      selectedTimeframe.value,
-      subscriptionForm.value.exchange
+      symbol,
+      dataType,
+      instType,
+      timeframe,
+      exchange,
+      assetType
     );
+
     closeModal();
     fetchSubscriptions();
   } catch (err) {
@@ -260,7 +340,9 @@ const deleteSubscription = async (id) => {
       authStore.username,
       subscription.symbol,
       subscription.dataType,
-      subscription.exchange
+      subscription.exchange,
+      subscription.timeframe || '',
+      subscription.assetType || 'CRYPTO'
     );
     fetchSubscriptions();
   } catch (err) {
@@ -290,7 +372,7 @@ async function fetchKlinesByRange(subscription, start, end, replace = true) {
   klineLoadingMore = true;
   try {
     const response = await getKlineData(subscription.symbol, subscription.timeframe || '1m', start, end);
-    const klines = response.data || [];
+    const klines = response || [];
     const formatted = klines.map(k => ({
       x: new Date(k.timestamp).getTime(),
       y: [k.openPrice, k.highPrice, k.lowPrice, k.closePrice]
@@ -367,9 +449,8 @@ onMounted(() => {
     return;
   }
   fetchSubscriptions();
-  if (selectedInstType.value && subscriptionForm.value.exchange) {
-    fetchInstruments();
-  }
+  fetchInstruments();
+  fetchForexPairs();
   document.addEventListener('click', handleSymbolClickOutside);
 });
 
@@ -379,14 +460,32 @@ onUnmounted(() => {
 
 const onSymbolInput = () => {
   showSymbolDropdown.value = true;
-  const inputValue = subscriptionForm.value.symbol.toUpperCase();
-  filteredSymbols.value = allInstruments.value.filter(item => 
-    item.instId.toUpperCase().includes(inputValue)
-  ).slice(0, 20);
+  const search = subscriptionForm.value.symbol.toLowerCase();
+  if (activeAssetTypeTab.value === 'CRYPTO') {
+    if (search) {
+      filteredSymbols.value = allInstruments.value.filter(item =>
+        item.instId.toLowerCase().includes(search)
+      );
+    } else {
+      filteredSymbols.value = allInstruments.value;
+    }
+  } else if (activeAssetTypeTab.value === 'FOREX') {
+    if (search) {
+      filteredSymbols.value = allForexPairs.value.filter(item =>
+        item.symbol.toLowerCase().includes(search)
+      );
+    } else {
+      filteredSymbols.value = allForexPairs.value;
+    }
+  }
 };
 
 function selectSymbol(item) {
-  subscriptionForm.value.symbol = item.instId;
+  if (activeAssetTypeTab.value === 'CRYPTO') {
+    subscriptionForm.value.symbol = item.instId;
+  } else if (activeAssetTypeTab.value === 'FOREX') {
+    subscriptionForm.value.symbol = item.symbol;
+  }
   showSymbolDropdown.value = false;
 }
 
@@ -399,62 +498,42 @@ function handleSymbolClickOutside(event) {
 
 // ---------- Aggregated view logic ---------- //
 
-const aggregatedList = ref([]);
-const editedStates = reactive({});
-
-function buildAggregations() {
-  const map = {};
-  subscriptions.value.forEach((sub) => {
+const aggregatedList = computed(() => {
+  const filteredSubscriptions = subscriptions.value.filter(sub => (sub.assetType || 'CRYPTO') === activeAssetTypeTab.value);
+  const aggregationMap = new Map();
+  filteredSubscriptions.forEach((sub) => {
     const key = `${sub.symbol}__${sub.exchange}`;
-    if (!map[key]) {
-      map[key] = {
+    if (!aggregationMap.has(key)) {
+      aggregationMap.set(key, {
         key,
         symbol: sub.symbol,
         exchange: sub.exchange,
         depth: false,
-        ohlc: {
-          '1m': false,
-          '5m': false,
-          '15m': false,
-          '1h': false,
-          '1d': false
-        }
-      };
+        ohlc: timeframeOptions.value.reduce((acc, tf) => ({ ...acc, [tf.value]: false }), {})
+      });
     }
-    if (sub.dataType === 'depth') map[key].depth = true;
-    else if (sub.dataType === 'ohlc') {
-      map[key].ohlc[sub.timeframe] = true;
+    const agg = aggregationMap.get(key);
+    if (sub.dataType === 'depth') {
+      agg.depth = true;
+    } else if (sub.dataType === 'ohlc' && agg.ohlc.hasOwnProperty(sub.timeframe)) {
+      agg.ohlc[sub.timeframe] = true;
     }
   });
-  aggregatedList.value = Object.values(map).sort((a, b) => {
-    const symCmp = a.symbol.localeCompare(b.symbol);
-    if (symCmp !== 0) return symCmp;
-    return a.exchange.localeCompare(b.exchange);
-  });
-  // initialise edited states to current
-  Object.values(map).forEach((agg) => {
+  return Array.from(aggregationMap.values());
+});
+
+const editedStates = reactive({});
+
+watch(aggregatedList, (newVal) => {
+  newVal.forEach(agg => {
     if (!editedStates[agg.key]) {
-      editedStates[agg.key] = JSON.parse(JSON.stringify({
+      editedStates[agg.key] = {
         depth: agg.depth,
         ohlc: { ...agg.ohlc }
-      }));
-    } else {
-      // update existing to keep in sync when data refreshes
-      Object.assign(editedStates[agg.key], {
-        depth: agg.depth
-      });
-      Object.keys(editedStates[agg.key].ohlc).forEach((tf) => {
-        editedStates[agg.key].ohlc[tf] = agg.ohlc[tf];
-      });
+      };
     }
   });
-  // remove states that no longer exist
-  Object.keys(editedStates).forEach((k) => {
-    if (!map[k]) delete editedStates[k];
-  });
-}
-
-watch(subscriptions, buildAggregations, { immediate: true });
+}, { immediate: true, deep: true });
 
 async function saveEdits(agg) {
   const state = editedStates[agg.key];
@@ -463,6 +542,18 @@ async function saveEdits(agg) {
     ohlc: { ...agg.ohlc }
   };
   const promises = [];
+
+  const assetType = activeAssetTypeTab.value;
+  let instType;
+  const exchange = agg.exchange.trim();
+
+  if (assetType === 'FOREX') {
+    instType = 'FOREX';
+  } else { // CRYPTO
+    const existingSub = subscriptions.value.find(s => s.symbol === agg.symbol && s.exchange === agg.exchange);
+    instType = existingSub ? existingSub.instType : 'SWAP';
+  }
+
   // Handle depth
   if (state.depth && !original.depth) {
     promises.push(
@@ -470,9 +561,10 @@ async function saveEdits(agg) {
         authStore.username,
         agg.symbol,
         'depth',
-        selectedInstType.value,
-        null,
-        agg.exchange
+        instType,
+        '',
+        exchange,
+        assetType
       )
     );
   } else if (!state.depth && original.depth) {
@@ -481,7 +573,9 @@ async function saveEdits(agg) {
         authStore.username,
         agg.symbol,
         'depth',
-        agg.exchange
+        exchange,
+        '',
+        assetType
       )
     );
   }
@@ -493,9 +587,10 @@ async function saveEdits(agg) {
           authStore.username,
           agg.symbol,
           'ohlc',
-          selectedInstType.value,
+          instType,
           tf,
-          agg.exchange
+          exchange,
+          assetType
         )
       );
     } else if (!state.ohlc[tf] && original.ohlc[tf]) {
@@ -504,8 +599,9 @@ async function saveEdits(agg) {
           authStore.username,
           agg.symbol,
           'ohlc',
-          agg.exchange,
-          tf
+          exchange,
+          tf,
+          assetType
         )
       );
     }
@@ -521,30 +617,82 @@ async function saveEdits(agg) {
   }
 }
 
-async function deleteAllForSymbol(agg) {
+const deleteAllForSymbol = async (agg) => {
+  const assetType = activeAssetTypeTab.value;
+  const promises = subscriptions.value
+    .filter(s =>
+      s.symbol === agg.symbol &&
+      s.exchange === agg.exchange &&
+      (s.assetType || 'CRYPTO') === assetType
+    )
+    .map(s => unsubscribe(
+      authStore.username,
+      s.symbol,
+      s.dataType,
+      s.exchange,
+      s.timeframe,
+      s.assetType || 'CRYPTO'
+    ));
+
   try {
-    loading.value = true;
-    const promises = subscriptions.value
-      .filter((s) => s.symbol === agg.symbol && s.exchange === agg.exchange)
-      .map((s) => unsubscribe(authStore.username, s.symbol, s.dataType, s.exchange, s.timeframe));
     await Promise.all(promises);
-    await fetchSubscriptions();
+    fetchSubscriptions();
   } catch (err) {
-    error.value = t('subscriptions.delete_fail', { error: err.message || 'unknown error' });
-  } finally {
-    loading.value = false;
+    error.value = t('subscriptions.delete_fail');
+    console.error('Failed to delete subscriptions:', err);
   }
-}
+};
 </script>
 
 <style scoped>
+.page-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.content {
+  flex-grow: 1;
+  padding: 2rem;
+  overflow-y: auto;
+}
+
 .header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 2rem;
+  margin-bottom: 1rem;
 }
-.table-container { margin-top: 2rem; }
+
+.tabs {
+  display: flex;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid #ccc;
+}
+
+.tab-button {
+  padding: 10px 20px;
+  cursor: pointer;
+  border: none;
+  background-color: transparent;
+  border-bottom: 2px solid transparent;
+  transition: all 0.3s ease;
+}
+
+.tab-button.active {
+  border-bottom: 2px solid #007bff;
+  font-weight: bold;
+  color: #007bff;
+}
+
+.tab-button.disabled {
+  cursor: not-allowed;
+  color: #aaa;
+}
+
+.table-container {
+  overflow-x: auto;
+}
 .table { width: 100%; border-collapse: collapse; }
 .table th, .table td { border: 1px solid #ddd; padding: 0.75rem; text-align: left; }
 .table th { background-color: #f8f8f8; font-weight: bold; }

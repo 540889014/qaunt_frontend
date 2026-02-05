@@ -331,7 +331,7 @@ export default defineComponent({
           formData.append('description', formValue.value.description);
           formData.append('parameters', JSON.stringify(formValue.value.parameters));
           if (formValue.value.scriptFile) {
-            formData.append('file', formValue.value.scriptFile);
+            formData.append('scriptFile', formValue.value.scriptFile);
           }
 
           try {

@@ -10,7 +10,9 @@ import type { ApexOptions } from 'apexcharts'
 
 interface SeriesData {
   name: string;
-  data: { x: any; y: any }[];
+  data: { x: any; y: any }[] | [number, number][];
+  yaxis?: string;
+  type?: string;
 }
 
 const props = defineProps({
@@ -33,41 +35,36 @@ const chartRef = ref<HTMLElement | null>(null);
 const chartInstance = ref<ApexCharts | null>(null);
 
 const getChartOptions = (currentSeries: SeriesData[]): ApexOptions => {
-  const seriesWithAxisIndex = currentSeries.map(s => {
-    const name = s.name;
-    const isSpreadSeries = name === 'Spread' || name === 'Mean' || name === 'Upper Band' || name === 'Lower Band';
-    const yAxisIndex = isSpreadSeries ? 0 : 1;
-    
-    console.log(`Series: "${name}", Is Spread Series: ${isSpreadSeries}, Assigned to Y-Axis: ${yAxisIndex}`);
+  const yaxes: ApexOptions['yaxis'] = [];
+  let spreadAxisUsed = false;
 
-    return {
-      ...s,
-      yAxisIndex: yAxisIndex
-    };
-  });
-
-  const hasZScore = currentSeries.some(s => {
-    const name = s.name;
-    return !(name === 'Spread' || name === 'Mean' || name === 'Upper Band' || name === 'Lower Band');
-  });
-
-  const yaxisConfig: ApexOptions['yaxis'] = [
-    {
-      title: { text: 'Spread' },
-      labels: { formatter: (val: number) => val != null ? `${(val * 100).toFixed(2)}%` : '' },
+  currentSeries.forEach(s => {
+    if (s.yaxis === 'zscore') {
+      yaxes.push({
+        seriesName: s.name,
+        opposite: true,
+        title: { text: 'Z Score' },
+        labels: { formatter: (val: number) => val != null ? val.toFixed(2) : '' },
+      });
+    } else {
+      if (!spreadAxisUsed) {
+        yaxes.push({
+          seriesName: s.name,
+          title: { text: 'Spread' },
+          labels: { formatter: (val: number) => val != null ? `${(val * 100).toFixed(2)}%` : '' },
+        });
+        spreadAxisUsed = true;
+      } else {
+        yaxes.push({
+          seriesName: s.name,
+          show: false,
+        });
+      }
     }
-  ];
-
-  if (hasZScore) {
-    yaxisConfig.push({
-      opposite: true,
-      title: { text: 'Z Score' },
-      labels: { formatter: (val: number) => val != null ? val.toFixed(2) : '' },
-    });
-  }
+  });
 
   return {
-    series: seriesWithAxisIndex,
+    series: currentSeries,
     chart: {
       type: 'line',
       height: props.height,
@@ -82,18 +79,7 @@ const getChartOptions = (currentSeries: SeriesData[]): ApexOptions => {
     },
     markers: { size: 0 },
     xaxis: { type: 'datetime' },
-    yaxis: [
-      {
-        title: { text: 'Spread' },
-        labels: { formatter: (val: number) => val != null ? `${(val * 100).toFixed(2)}%` : '' },
-      },
-      {
-        opposite: true,
-        show: hasZScore,
-        title: { text: 'Z Score' },
-        labels: { formatter: (val: number) => val != null ? val.toFixed(2) : '' },
-      }
-    ],
+    yaxis: yaxes,
     tooltip: {
       shared: true,
       intersect: false,
@@ -119,6 +105,9 @@ const getChartOptions = (currentSeries: SeriesData[]): ApexOptions => {
 
 const initChart = () => {
   if (chartRef.value && props.series.length > 0) {
+    if (chartInstance.value) {
+      chartInstance.value.destroy();
+    }
     const options = getChartOptions(props.series);
     chartInstance.value = new ApexCharts(chartRef.value, options);
     chartInstance.value.render();
@@ -133,15 +122,8 @@ onUnmounted(() => {
   }
 });
 
-watch(() => props.series, (newSeries) => {
-  if (chartInstance.value) {
-    const options = getChartOptions(newSeries);
-    chartInstance.value.updateOptions(options, true);
-  } else if (chartRef.value && newSeries.length > 0) {
-    const options = getChartOptions(newSeries);
-    chartInstance.value = new ApexCharts(chartRef.value, options);
-    chartInstance.value.render();
-  }
+watch(() => props.series, () => {
+  initChart();
 }, { deep: true });
 
 </script> 

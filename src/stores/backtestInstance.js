@@ -27,11 +27,11 @@ export const useBacktestInstanceStore = defineStore('backtestInstance', {
       this.error = null;
       try {
         const response = await getBacktestInstances(page, size, sort);
-        this.instances = response.data.content;
-        this.pagination.page = response.data.number;
-        this.pagination.size = response.data.size;
-        this.pagination.totalElements = response.data.totalElements;
-        this.pagination.totalPages = response.data.totalPages;
+        this.instances = response.content;
+        this.pagination.page = response.number;
+        this.pagination.size = response.size;
+        this.pagination.totalElements = response.totalElements;
+        this.pagination.totalPages = response.totalPages;
       } catch (error) {
         this.error = error;
       } finally {
@@ -44,7 +44,7 @@ export const useBacktestInstanceStore = defineStore('backtestInstance', {
         this.instance = null;
         try {
             const response = await getBacktestInstance(id);
-            this.instance = response.data;
+            this.instance = response;
         } catch (error) {
             this.error = error;
         } finally {
@@ -57,7 +57,7 @@ export const useBacktestInstanceStore = defineStore('backtestInstance', {
         try {
             const response = await createBacktestInstance(data);
             await this.fetchInstances(); // Refresh list after creation
-            return response.data;
+            return response;
         } catch (error) {
             this.error = error;
             throw error;
@@ -104,7 +104,7 @@ export const useBacktestInstanceStore = defineStore('backtestInstance', {
             // Update the specific instance in the list
             const index = this.instances.findIndex(i => i.id === id);
             if (index !== -1) {
-                this.instances[index] = response.data;
+                this.instances[index] = response;
             }
         } catch (error) {
             this.error = error;

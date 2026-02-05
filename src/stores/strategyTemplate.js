@@ -18,10 +18,10 @@ export const useStrategyTemplateStore = defineStore('strategyTemplate', {
       this.loading = true;
       try {
         const response = await api.getStrategyTemplates(page, size);
-        this.templates = response.data.content;
-        this.pagination.page = response.data.number;
-        this.pagination.size = response.data.size;
-        this.pagination.total = response.data.totalElements;
+        this.templates = response.content;
+        this.pagination.page = response.number;
+        this.pagination.size = response.size;
+        this.pagination.total = response.totalElements;
         this.error = null;
       } catch (error) {
         this.error = error.message || 'Failed to fetch strategy templates.';
@@ -34,9 +34,9 @@ export const useStrategyTemplateStore = defineStore('strategyTemplate', {
       this.loading = true;
       try {
         const response = await api.getStrategyTemplateById(id);
-        this.currentTemplate = response.data;
+        this.currentTemplate = response;
         this.error = null;
-        return response.data;
+        return response;
       } catch (error) {
         this.error = error.message || `Failed to fetch template with id ${id}.`;
         this.currentTemplate = null;
@@ -52,7 +52,7 @@ export const useStrategyTemplateStore = defineStore('strategyTemplate', {
         // Optionally, refresh the list after creation
         await this.fetchTemplates(this.pagination.page, this.pagination.size);
         this.error = null;
-        return response.data;
+        return response;
       } catch (error) {
         this.error = error.response?.data?.message || error.message || 'Failed to create template.';
         throw error;
@@ -64,10 +64,10 @@ export const useStrategyTemplateStore = defineStore('strategyTemplate', {
       this.loading = true;
       try {
         const response = await api.updateStrategyTemplate(id, formData);
-        this.currentTemplate = response.data; // Update current template view
+        this.currentTemplate = response; // Update current template view
         await this.fetchTemplates(this.pagination.page, this.pagination.size);
         this.error = null;
-        return response.data;
+        return response;
       } catch (error) {
         this.error = error.response?.data?.message || error.message || 'Failed to update template.';
         throw error;

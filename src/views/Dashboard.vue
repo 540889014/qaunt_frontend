@@ -13,6 +13,18 @@
           <h3>{{ $t('dashboard.subscription_count') }}</h3>
           <p class="stat-value">{{ subscriptionCount }}</p>
         </div>
+        <div class="card" @click="goToTemplates">
+          <h3>{{ $t('dashboard.template_count') }}</h3>
+          <p class="stat-value">{{ templateCount }}</p>
+        </div>
+        <div class="card" @click="goToInstances">
+          <h3>{{ $t('dashboard.instance_count') }}</h3>
+          <p class="stat-value">{{ instanceCount }}</p>
+        </div>
+        <div class="card" @click="goToInstances">
+          <h3>{{ $t('dashboard.running_instance_count') }}</h3>
+          <p class="stat-value">{{ runningCount }}</p>
+        </div>
       </div>
     </div>
   </div>
@@ -23,7 +35,7 @@ import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import { useExchangeStore } from '@/stores/exchange'
-import { getSubscriptionsByUsername } from '../api'
+import { getSubscriptionsByUsername, getStrategyTemplates, getBacktestInstances } from '../api'
 import NavBar from '../components/NavBar.vue'
 import LoadingSpinner from '../components/LoadingSpinner.vue'
 import ErrorMessage from '../components/ErrorMessage.vue'
@@ -34,6 +46,9 @@ const authStore = useAuthStore()
 const exchangeStore = useExchangeStore()
 const username = ref(authStore.username)
 const subscriptionCount = ref(0)
+const templateCount = ref(0)
+const instanceCount = ref(0)
+const runningCount = ref(0)
 const loading = ref(false)
 const error = ref('')
 const router = useRouter()
@@ -42,9 +57,16 @@ const fetchDashboardData = async () => {
   loading.value = true
   error.value = ''
   try {
-    const resp = await getSubscriptionsByUsername(authStore.username, exchangeStore.selectedExchange || '')
-    const subs = resp.data || []
-    subscriptionCount.value = subs.length
+    const [subs, templatesResp, instancesResp] = await Promise.all([
+      getSubscriptionsByUsername(authStore.username, exchangeStore.selectedExchange || ''),
+      getStrategyTemplates(0, 1),
+      getBacktestInstances(0, 100, 'createdAt,desc')
+    ]);
+
+    subscriptionCount.value = subs ? subs.length : 0;
+    templateCount.value = templatesResp ? templatesResp.totalElements ?? templatesResp.content?.length ?? 0 : 0;
+    instanceCount.value = instancesResp ? instancesResp.totalElements ?? instancesResp.content?.length ?? 0 : 0;
+    runningCount.value = instancesResp && instancesResp.content ? instancesResp.content.filter(i => i.status === 'RUNNING').length : 0;
   } catch (err) {
     error.value = t('dashboard.load_fail')
     console.error('Failed to fetch dashboard data:', err)
@@ -55,6 +77,14 @@ const fetchDashboardData = async () => {
 
 function goToSubscriptions() {
   router.push('/subscriptions')
+}
+
+function goToTemplates() {
+  router.push('/strategy-templates')
+}
+
+function goToInstances() {
+  router.push('/backtest-instances')
 }
 
 onMounted(() => {

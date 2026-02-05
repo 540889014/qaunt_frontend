@@ -35,6 +35,7 @@ import { defineComponent, ref, h, onMounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { useBacktestInstanceStore } from '@/stores/backtestInstance';
+import { useStrategyTemplateStore } from '@/stores/strategyTemplate';
 import { storeToRefs } from 'pinia';
 import { NButton, NDataTable, NModal, useMessage, NTag } from 'naive-ui';
 import NavBar from '@/components/NavBar.vue';
@@ -55,6 +56,17 @@ export default defineComponent({
     const message = useMessage();
     const { instances, pagination, loading, error } = storeToRefs(store);
 
+    const templateStore = useStrategyTemplateStore();
+    const { templates } = storeToRefs(templateStore);
+
+    const templateNameMap = computed(() => {
+      const map = {};
+      templates.value.forEach(tpl => { map[tpl.id] = tpl.name; });
+      return map;
+    });
+
+    templateStore.fetchTemplates(0, 1000);
+
     const showDeleteModal = ref(false);
     const instanceToDelete = ref(null);
 
@@ -72,7 +84,9 @@ export default defineComponent({
 
     const columns = computed(() => [
       { title: t('backtest_instances.name'), key: 'name', sorter: 'default' },
-      { title: t('backtest_instances.strategy_template_id'), key: 'strategyTemplateId' },
+      { title: t('backtest_instances.strategy_template_id'), key: 'strategyTemplateId',
+        render(row){ return templateNameMap.value[row.strategyTemplateId] || row.strategyTemplateId; }
+      },
       {
         title: t('backtest_instances.status'),
         key: 'status',
@@ -101,6 +115,12 @@ export default defineComponent({
               strong: true,
               tertiary: true,
               size: 'small',
+              onClick: () => handleViewReports(row),
+            }, { default: () => t('backtest_instances.reports') }),
+            h(NButton, {
+              strong: true,
+              tertiary: true,
+              size: 'small',
               onClick: () => handleRun(row),
               disabled: row.status === 'RUNNING',
             }, { default: () => t('common.run') }),
@@ -124,6 +144,11 @@ export default defineComponent({
     
     const handleCreate = () => {
       router.push({ name: 'BacktestInstanceCreate' });
+    };
+
+    const handleViewReports = (row) => {
+      const strategyName = `backtestInstance_${row.id}`;
+      router.push({ name: 'BacktestReport', params: { strategyName } });
     };
 
     const handleEdit = (row) => {
@@ -182,7 +207,29 @@ export default defineComponent({
       handleDelete,
       confirmDelete,
       handlePageChange,
+      handleViewReports,
+      handleRun
     };
   },
 });
-</script> 
+</script>
+
+<i18n>
+{
+  "en": {
+    "backtest_instances": {
+      "reports": "Reports"
+    }
+  },
+  "zh": {
+    "backtest_instances": {
+      "reports": "报告"
+    }
+  },
+  "ja": {
+    "backtest_instances": {
+      "reports": "レポート"
+    }
+  }
+}
+</i18n> 

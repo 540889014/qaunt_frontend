@@ -159,12 +159,12 @@
 <script>
 import { defineComponent, ref, onMounted, computed, nextTick, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import axios from 'axios';
 import SockJS from 'sockjs-client/dist/sockjs.min.js';
 import Stomp from 'stompjs';
 import { NSelect, NCheckbox, useMessage } from 'naive-ui';
 import { useSubscriptionStore } from '@/stores/subscription';
 import { useStrategyTemplateStore } from '@/stores/strategyTemplate';
+import { runBacktest as apiRunBacktest } from '@/api';
 import { storeToRefs } from 'pinia';
 import NavBar from '@/components/NavBar.vue';
 import BacktestResultChart from '@/components/BacktestResultChart.vue';
@@ -245,9 +245,10 @@ export default defineComponent({
       strategyTemplates.value.map(t => ({ label: t.name, value: t.id }))
     );
 
-    const symbolOptions = computed(() => 
-      Array.isArray(subscribedSymbols.value) ? subscribedSymbols.value.map(s => ({ label: s, value: s })) : []
-    );
+    const symbolOptions = computed(() => {
+      const symbols = subscribedSymbols.value;
+      return Array.isArray(symbols) ? symbols.map(s => ({ label: s, value: s })) : [];
+    });
 
     const tradeLogHeaders = computed(() => 
       tradeLog.value.length > 0 ? Object.keys(tradeLog.value[0]) : []
@@ -302,12 +303,57 @@ export default defineComponent({
         strategyParams.value = params;
         
         let legCount = 0;
-        const legRegex = /def\s+(on_receive_ohlc|on_receive_depth)\s*\(([^)]*)\)/g;
-        let match;
-        while ((match = legRegex.exec(template.script)) !== null) {
-            const args = match[2].split(',').map(arg => arg.trim());
-            const handlerLegs = args.filter(arg => arg !== 'self').length;
-            legCount += handlerLegs;
+        // Handle both single-line and multi-line function definitions
+        const lines = template.script.split(/\r?\n/);
+        const lifecycleMethods = ['on_receive_ohlc', 'on_receive_marketdata', 'on_receive_depth'];
+        
+        for (let i = 0; i < lines.length; i++) {
+            const trimmedLine = lines[i].trim();
+            if (!trimmedLine.startsWith('def ')) continue;
+            
+            for (const methodName of lifecycleMethods) {
+                if (trimmedLine.includes(methodName)) {
+                    // Check if function definition spans multiple lines
+                    let argsText = '';
+                    let parenStart = trimmedLine.indexOf('(');
+                    
+                    if (parenStart === -1) continue;
+                    
+                    // Extract initial part after opening parenthesis
+                    argsText = trimmedLine.substring(parenStart + 1);
+                    
+                    // If closing parenthesis is not on the same line, continue reading
+                    if (!argsText.includes(')')) {
+                        // Multi-line function definition - accumulate lines until we find closing paren
+                        for (let j = i + 1; j < lines.length; j++) {
+                            argsText += ' ' + lines[j].trim();
+                            if (lines[j].includes(')')) {
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // Extract content between parentheses (remove closing paren and anything after)
+                    const closingParenIndex = argsText.indexOf(')');
+                    if (closingParenIndex !== -1) {
+                        argsText = argsText.substring(0, closingParenIndex);
+                    }
+                    
+                    if (argsText.trim()) {
+                        // Parse arguments: handle type hints, default values, and whitespace
+                        const args = argsText
+                            .split(',')
+                            .map(arg => arg.trim().split(':')[0].split('=')[0].trim())
+                            .filter(arg => arg && arg !== 'self'); // Remove empty args and 'self'
+                        const handlerLegs = args.length;
+                        // Take the maximum leg count across all callbacks (don't accumulate)
+                        if (handlerLegs > legCount) {
+                            legCount = handlerLegs;
+                        }
+                    }
+                    break;
+                }
+            }
         }
         if (legCount === 0 && template.script.length > 0) legCount = 1;
 
@@ -409,12 +455,9 @@ export default defineComponent({
 
         try {
             backtestId.value = null;
-            const apiUrl = `${import.meta.env.VITE_API_BASE_URL}/api/v1/backtest/run`;
-            const response = await axios.post(apiUrl, payload, {
-                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-            });
-            if (response.data && response.data.backtestId) {
-                backtestId.value = response.data.backtestId;
+            const response = await apiRunBacktest(payload);
+            if (response && response.backtestId) {
+                backtestId.value = response.backtestId;
                 connectWebSocket();
             } else {
                 throw new Error(t('backtest.errors.failed_to_start'));

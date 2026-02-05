@@ -5,6 +5,7 @@ import Subscriptions from '../views/Subscriptions.vue'
 import SpreadTool from '../views/SpreadTool.vue'
 import StatisticalArbitrage from '../views/StatisticalArbitrage.vue'
 import Backtest from '../views/Backtest.vue'
+import AgentCenter from '../views/AgentCenter.vue'
 import UserManagement from '@/views/UserManagement.vue'
 import StrategyTemplateList from '@/views/StrategyTemplateList.vue'
 import StrategyTemplateForm from '@/views/StrategyTemplateForm.vue'
@@ -16,6 +17,12 @@ const routes = [
   {
     path: '/',
     redirect: '/dashboard'
+  },
+  {
+    path: '/agent',
+    name: 'AgentCenter',
+    component: AgentCenter,
+    meta: { requiresAuth: true, title: 'Agent Research Center' }
   },
   {
     path: '/login',
@@ -94,6 +101,13 @@ const routes = [
     name: 'BacktestInstanceEdit',
     component: BacktestInstanceForm,
     meta: { requiresAuth: true }
+  },
+  {
+    path: '/backtest-reports/:strategyName',
+    name: 'BacktestReport',
+    component: () => import('@/views/BacktestReport.vue'),
+    props: true,
+    meta: { requiresAuth: true, title: 'Backtest Report' }
   }
 ]
 

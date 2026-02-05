@@ -31,9 +31,15 @@
             </select>
           </div>
         </div>
-        <button @click="recalculateIndices" class="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600">{{ $t('statistical_arbitrage.update_indicators') }}</button>
+        <button @click="recalculateIndices" :disabled="loading" class="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 disabled:bg-gray-400">
+          <span v-if="loading">{{ $t('statistical_arbitrage.updating') }}</span>
+          <span v-else>{{ $t('statistical_arbitrage.update_indicators') }}</span>
+        </button>
       </div>
-      <div class="flex flex-col gap-6">
+      <div v-if="loading" class="text-center">
+        <p>Loading...</p>
+      </div>
+      <div v-else class="flex flex-col gap-6">
         <!-- ADF Results -->
         <div class="bg-white p-6 rounded-lg shadow-md">
           <div @click="toggleVisibility('adf')" class="cursor-pointer flex justify-between items-center">
@@ -123,170 +129,112 @@
   </div>
 </template>
 
-<script>
-import NavBar from '@/components/NavBar.vue'
-import axios from 'axios'
+<script setup>
+import { ref, onMounted, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
+import NavBar from '@/components/NavBar.vue';
+import { 
+  getAdfTestResults, 
+  getKpssTestResults, 
+  getHurstExponentResults, 
+  recalculateStatisticalArbitrage 
+} from '@/api';
 
-export default {
-  name: 'StatisticalArbitrage',
-  components: {
-    NavBar
-  },
-  data() {
-    return {
-      adfResults: [],
-      kpssResults: [],
-      hurstResults: [],
-      adfSortDirection: '',
-      kpssSortDirection: '',
-      hurstSortDirection: '',
-      selectedExchange: 'okx',
-      selectedTimeframe: '1h',
-      exchanges: [],
-      isAdfVisible: true,
-      isKpssVisible: true,
-      isHurstVisible: true,
-    }
-  },
-  created() {
-    this.fetchExchanges()
-    this.fetchResults()
-  },
-  methods: {
-    toggleVisibility(type) {
-      if (type === 'adf') {
-        this.isAdfVisible = !this.isAdfVisible;
-      } else if (type === 'kpss') {
-        this.isKpssVisible = !this.isKpssVisible;
-      } else if (type === 'hurst') {
-        this.isHurstVisible = !this.isHurstVisible;
-      }
-    },
-    getAuthToken() {
-      const token = localStorage.getItem('token') || ''
-      console.log('Retrieved auth token from localStorage:', token)
-      return token
-    },
-    fetchExchanges() {
-      const exchanges = [
-        'okx',
-        'binance'
-      ]
-      this.exchanges = exchanges
-      this.selectedExchange = exchanges[0]
-    },
-    fetchResults() {
-      const token = this.getAuthToken()
-      const headers = token ? { 'Authorization': `Bearer ${token}` } : {}
-      const exchange = this.selectedExchange
-      const timeframe = this.selectedTimeframe
-      
-      console.log('Fetching results with token:', token)
-      console.log('Request headers:', headers)
-      
-      // Fetch ADF results
-      console.log('Request URL (ADF):', `${import.meta.env.VITE_API_BASE_URL}/api/v1/statistical-arbitrage/adf-test?timeframe=${timeframe}&exchange=${exchange}`)
-      axios.get(`${import.meta.env.VITE_API_BASE_URL}/api/v1/statistical-arbitrage/adf-test`, { 
-        headers,
-        params: { timeframe, exchange }
-      })
-        .then(response => {
-          console.log('ADF results fetched successfully:', response.data)
-          this.adfResults = response.data
-        })
-        .catch(error => {
-          console.error('Error fetching ADF results:', error)
-          this.adfResults = []
-        })
-      
-      // Fetch KPSS results
-      console.log('Request URL (KPSS):', `${import.meta.env.VITE_API_BASE_URL}/api/v1/statistical-arbitrage/kpss-test?timeframe=${timeframe}&exchange=${exchange}`)
-      axios.get(`${import.meta.env.VITE_API_BASE_URL}/api/v1/statistical-arbitrage/kpss-test`, { 
-        headers,
-        params: { timeframe, exchange }
-      })
-        .then(response => {
-          console.log('KPSS results fetched successfully:', response.data)
-          this.kpssResults = response.data
-        })
-        .catch(error => {
-          console.error('Error fetching KPSS results:', error)
-          this.kpssResults = []
-        })
-      
-      // Fetch Hurst results
-      console.log('Request URL (Hurst):', `${import.meta.env.VITE_API_BASE_URL}/api/v1/statistical-arbitrage/hurst-exponent?timeframe=${timeframe}&exchange=${exchange}`)
-      axios.get(`${import.meta.env.VITE_API_BASE_URL}/api/v1/statistical-arbitrage/hurst-exponent`, { 
-        headers,
-        params: { timeframe, exchange }
-      })
-        .then(response => {
-          console.log('Hurst results fetched successfully:', response.data)
-          this.hurstResults = response.data
-        })
-        .catch(error => {
-          console.error('Error fetching Hurst results:', error)
-          this.hurstResults = []
-        })
-    },
-    refreshResults() {
-      this.fetchResults()
-    },
-    recalculateIndices() {
-      const token = this.getAuthToken()
-      const headers = token ? { 'Authorization': `Bearer ${token}` } : {}
-      const exchange = this.selectedExchange
-      const timeframe = this.selectedTimeframe
-      
-      console.log('Recalculating indices with token:', token)
-      console.log('Request headers:', headers)
-      console.log('Request URL:', `${import.meta.env.VITE_API_BASE_URL}/api/v1/statistical-arbitrage/recalculate?timeframe=${timeframe}&exchange=${exchange}`)
-      axios.post(`${import.meta.env.VITE_API_BASE_URL}/api/v1/statistical-arbitrage/recalculate`, null, { 
-        headers,
-        params: { timeframe, exchange }
-      })
-        .then(response => {
-          console.log('Recalculation successful:', response.data)
-          this.fetchResults()
-        })
-        .catch(error => {
-          console.error('Error recalculating indices:', error)
-        })
-    },
-    sortResults(type) {
-      let results
-      let currentDirection
-      
-      if (type === 'adf') {
-        results = this.adfResults
-        currentDirection = this.adfSortDirection
-        this.adfSortDirection = currentDirection === 'asc' ? 'desc' : 'asc'
-      } else if (type === 'kpss') {
-        results = this.kpssResults
-        currentDirection = this.kpssSortDirection
-        this.kpssSortDirection = currentDirection === 'asc' ? 'desc' : 'asc'
-      } else if (type === 'hurst') {
-        results = this.hurstResults
-        currentDirection = this.hurstSortDirection
-        this.hurstSortDirection = currentDirection === 'asc' ? 'desc' : 'asc'
-      } else {
-        return
-      }
+const { t } = useI18n();
 
-      results.sort((a, b) => {
-        return currentDirection === 'asc' ? b.value - a.value : a.value - b.value
-      })
-    }
-  },
-  watch: {
-    selectedExchange() {
-      this.fetchResults()
-    },
-    selectedTimeframe() {
-      this.fetchResults()
-    }
+const adfResults = ref([]);
+const kpssResults = ref([]);
+const hurstResults = ref([]);
+const adfSortDirection = ref('');
+const kpssSortDirection = ref('');
+const hurstSortDirection = ref('');
+const selectedExchange = ref('okx');
+const selectedTimeframe = ref('1h');
+const exchanges = ref(['okx', 'binance']);
+const isAdfVisible = ref(true);
+const isKpssVisible = ref(true);
+const isHurstVisible = ref(true);
+const loading = ref(false);
+
+const toggleVisibility = (type) => {
+  if (type === 'adf') isAdfVisible.value = !isAdfVisible.value;
+  else if (type === 'kpss') isKpssVisible.value = !isKpssVisible.value;
+  else if (type === 'hurst') isHurstVisible.value = !isHurstVisible.value;
+};
+
+const fetchResults = async () => {
+  loading.value = true;
+  const exchange = selectedExchange.value;
+  const timeframe = selectedTimeframe.value;
+
+  try {
+    const [adfRes, kpssRes, hurstRes] = await Promise.all([
+      getAdfTestResults(timeframe, exchange),
+      getKpssTestResults(timeframe, exchange),
+      getHurstExponentResults(timeframe, exchange)
+    ]);
+    adfResults.value = adfRes || [];
+    kpssResults.value = kpssRes || [];
+    hurstResults.value = hurstRes || [];
+  } catch (error) {
+    console.error('Error fetching statistical arbitrage results:', error);
+    adfResults.value = [];
+    kpssResults.value = [];
+    hurstResults.value = [];
+  } finally {
+    loading.value = false;
   }
-}
+};
+
+const refreshResults = () => {
+  fetchResults();
+};
+
+const recalculateIndices = async () => {
+  loading.value = true;
+  try {
+    await recalculateStatisticalArbitrage(selectedTimeframe.value, selectedExchange.value);
+    await fetchResults();
+  } catch (error) {
+    console.error('Error recalculating indices:', error);
+  } finally {
+    loading.value = false;
+  }
+};
+
+const sortResults = (type) => {
+  let results, directionRef;
+
+  if (type === 'adf') {
+    results = adfResults.value;
+    directionRef = adfSortDirection;
+  } else if (type === 'kpss') {
+    results = kpssResults.value;
+    directionRef = kpssSortDirection;
+  } else if (type === 'hurst') {
+    results = hurstResults.value;
+    directionRef = hurstSortDirection;
+  } else {
+    return;
+  }
+
+  directionRef.value = directionRef.value === 'asc' ? 'desc' : 'asc';
+  const sortAsc = directionRef.value === 'asc';
+
+  results.sort((a, b) => {
+    const valA = a.value ?? -Infinity;
+    const valB = b.value ?? -Infinity;
+    return sortAsc ? valA - valB : valB - valA;
+  });
+};
+
+onMounted(() => {
+  fetchResults();
+});
+
+watch([selectedExchange, selectedTimeframe], () => {
+  fetchResults();
+});
 </script>
 
 <style scoped>

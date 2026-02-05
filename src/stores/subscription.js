@@ -11,6 +11,9 @@ export const useSubscriptionStore = defineStore('subscription', {
   getters: {
     subscribedSymbols: (state) => {
       // 使用 Set 去重
+      if (!Array.isArray(state.subscriptions)) {
+        return [];
+      }
       const symbols = new Set(state.subscriptions.map(sub => sub.symbol));
       return Array.from(symbols);
     }
@@ -28,7 +31,7 @@ export const useSubscriptionStore = defineStore('subscription', {
       this.loading = true;
       try {
         const response = await getSubscriptionsByUsername(authStore.username, exchange);
-        this.subscriptions = response.data;
+        this.subscriptions = response || [];
         this.error = null;
       } catch (error) {
         this.error = error.message || '購読の取得に失敗しました';
