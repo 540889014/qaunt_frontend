@@ -65,22 +65,39 @@
             </div>
           </div>
 
-          <n-form-item :label="$t('backtest_instances.form.symbols')">
-            <div class="w-full">
-              <div v-for="(symbol, index) in formValue.symbols" :key="index" class="flex items-center space-x-2 mb-2">
-                <n-select
-                  v-model:value="symbol.name"
-                  filterable
-                  :placeholder="$t('backtest.search_instrument')"
-                  :options="symbolOptions"
-                  class="flex-grow"
-                />
-                <n-button @click="removeSymbol(index)" type="error" text>
-                  <template #icon><n-icon :component="TrashIcon" /></template>
-                </n-button>
-              </div>
+          <!-- 撮合算法配置 (Java; other languages will ignore) -->
+          <div class="space-y-4 border-t pt-6">
+            <h3 class="text-lg font-medium text-gray-800">{{ $t('backtest.matching_algorithm_config') }}</h3>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">{{ $t('backtest.matching_algorithm_type') }}</label>
+              <n-select v-model:value="formValue.matchingAlgorithm" :options="matchingAlgorithmOptions" class="max-w-sm"/>
+              <p class="mt-1 text-sm text-gray-500">
+                <span>（仅 Java 策略模板生效）</span>
+                <span v-if="formValue.matchingAlgorithm === 'BEST_PRICE'">{{ $t('backtest.matching_algorithm_hint.best_price') }}</span>
+                <span v-else-if="formValue.matchingAlgorithm === 'MARKET_BEST'">{{ $t('backtest.matching_algorithm_hint.market_best') }}</span>
+                <span v-else-if="formValue.matchingAlgorithm === 'MID_PRICE'">{{ $t('backtest.matching_algorithm_hint.mid_price') }}</span>
+                <span v-else-if="formValue.matchingAlgorithm === 'SLIPPAGE'">{{ $t('backtest.matching_algorithm_hint.slippage') }}</span>
+              </p>
             </div>
-          </n-form-item>
+          </div>
+
+          <div class="space-y-4 border-t pt-6">
+            <h3 class="text-lg font-medium text-gray-800">{{ $t('backtest.leg_config') }}</h3>
+            <p class="text-sm text-gray-500">{{ $t('backtest_instances.form.leg_config_hint', { n: formValue.symbols.length }) }}</p>
+            <div v-for="(symbol, index) in formValue.symbols" :key="index" class="flex items-center space-x-2 mb-2">
+              <label class="text-sm font-medium text-gray-700 w-40 shrink-0">{{ strategyDescriptor?.legs?.[index]?.label || $t('backtest.leg_n', { n: index + 1 }) }}</label>
+              <n-select
+                v-model:value="symbol.name"
+                filterable
+                :placeholder="$t('backtest.search_instrument')"
+                :options="symbolOptions"
+                class="flex-grow"
+              />
+              <n-button v-if="formValue.symbols.length > 1" @click="removeSymbol(index)" type="error" text>
+                <template #icon><n-icon :component="TrashIcon" /></template>
+              </n-button>
+            </div>
+          </div>
           
           <div class="border-t pt-6">
             <h3 class="text-lg font-medium text-gray-800">{{ $t('backtest.strategy_params') }}</h3>
@@ -111,6 +128,7 @@ import ParameterEditor from '@/components/ParameterEditor.vue';
 import { useAuthStore } from '@/stores/auth';
 import { useSubscriptionStore } from '@/stores/subscription';
 import { parseNumLegsFromScript } from '@/utils/parameter-parser';
+import { getStrategyDescriptor } from '@/api';
 
 // A simple UUID generator for browser compatibility.
 function generateUUID() {
@@ -154,6 +172,11 @@ export default defineComponent({
     
     const authStore = useAuthStore();
 
+    const stripOkxSuffix = (v) => {
+      if (typeof v !== 'string') return v;
+      return v.trim().replace(/\.okx$/i, '');
+    };
+
     const formRef = ref(null);
     const formValue = ref({
       name: '',
@@ -174,11 +197,14 @@ export default defineComponent({
           slippage: 0.005,
         },
       },
+      matchingAlgorithm: 'BEST_PRICE', // BEST_PRICE, MARKET_BEST, MID_PRICE, SLIPPAGE (JAVA only)
       parameters: [],
     });
     
     const instanceId = computed(() => route.params.id);
     const isEditMode = computed(() => !!instanceId.value);
+    /** Strategy descriptor from GET /strategy-templates/:id/descriptor (JAVA only). Drives leg labels and CONFIG on submit. */
+    const strategyDescriptor = ref(null);
 
     const strategyTemplateOptions = computed(() => 
       strategyTemplates.value.map(template => ({
@@ -186,13 +212,30 @@ export default defineComponent({
         value: template.id,
       }))
     );
+
+    const isJavaTemplate = computed(() => {
+      const byId = strategyTemplates.value?.find(t => t?.id === formValue.value.strategyTemplateId);
+      const lang = (currentTemplate.value?.language ?? byId?.language ?? '').toString().trim().toUpperCase();
+      return lang === 'JAVA';
+    });
     
     const symbolOptions = computed(() =>
-      Array.isArray(subscribedSymbols.value) ? subscribedSymbols.value.map(s => ({ label: s, value: s })) : []
+      Array.isArray(subscribedSymbols.value)
+        ? subscribedSymbols.value.map(s => {
+            const normalized = stripOkxSuffix(String(s));
+            return { label: normalized, value: normalized };
+          })
+        : []
     );
 
     const exchangeOptions = [{ label: 'OKX', value: 'okx' }, { label: 'Binance', value: 'binance' }];
     const patternOptions = [{ label: 'OHLC', value: 'OHLC' }, { label: 'ORDERBOOK', value: 'ORDERBOOK' }];
+    const matchingAlgorithmOptions = [
+      { label: '最优价撮合 (Best Price)', value: 'BEST_PRICE' },
+      { label: '市价撮合(盘口) (Market @ Best Bid/Ask)', value: 'MARKET_BEST' },
+      { label: '中价撮合 (Mid Price)', value: 'MID_PRICE' },
+      { label: '滑点模拟 (Slippage)', value: 'SLIPPAGE' }
+    ];
     const timeframeOptions = [
         { label: '1m', value: '1m' }, { label: '3m', value: '3m' }, { label: '5m', value: '5m' },
         { label: '15m', value: '15m' }, { label: '30m', value: '30m' }, { label: '1H', value: '1H' },
@@ -233,29 +276,41 @@ export default defineComponent({
 
     const handleTemplateChange = (templateId) => {
       if (!templateId) {
+        strategyDescriptor.value = null;
         formValue.value.parameters = [];
         formValue.value.symbols = [{ name: '' }];
         return;
       }
+      strategyDescriptor.value = null;
       strategyTemplateStore.fetchTemplateById(templateId)
-        .then((fetchedTemplate) => {
-          if (fetchedTemplate) {
-             // When a template is loaded, map its parameters to include a 'value' field
-             // that users can edit, initializing it with the 'defaultValue'.
-             formValue.value.parameters = (fetchedTemplate.parameters || []).map(p => ({
-               ...p,
-               value: p.defaultValue 
-             }));
+        .then(async (fetchedTemplate) => {
+          if (!fetchedTemplate) return;
+          const template = fetchedTemplate.data ?? fetchedTemplate;
+          formValue.value.parameters = (template.parameters || []).map(p => ({
+            ...p,
+            value: p.defaultValue
+          }));
 
-             // Parse the number of legs from the script content
-             const numberOfLegs = fetchedTemplate.script 
-               ? parseNumLegsFromScript(fetchedTemplate.script) 
-               : 1;
-             console.log("Parsed number of legs:", numberOfLegs);
-
-             // Adjust the number of symbol inputs based on the number of legs
-             formValue.value.symbols = Array(numberOfLegs > 0 ? numberOfLegs : 1).fill(null).map(() => ({ name: '' }));
+          let numberOfLegs = 1;
+          try {
+            const descRes = await getStrategyDescriptor(templateId);
+            const desc = descRes?.data ?? descRes;
+            if (desc?.legs?.length) {
+              strategyDescriptor.value = desc;
+              numberOfLegs = desc.legs.length;
+            } else {
+              const language = template.language || 'PYTHON';
+              numberOfLegs = template.script
+                ? parseNumLegsFromScript(template.script, language)
+                : 1;
+            }
+          } catch {
+            const language = template.language || 'PYTHON';
+            numberOfLegs = template.script
+              ? parseNumLegsFromScript(template.script, language)
+              : 1;
           }
+          formValue.value.symbols = Array(numberOfLegs > 0 ? numberOfLegs : 1).fill(null).map(() => ({ name: '' }));
         })
         .catch(err => {
           message.error(t('backtest_instances.form.fetch_template_error'));
@@ -298,13 +353,19 @@ export default defineComponent({
             const params = savedParamsData;
             formValue.value.startTime = params.BACKTEST?.START_TIME || null;
             formValue.value.endTime = params.BACKTEST?.END_TIME || null;
-            formValue.value.symbols = params.SYMBOLS?.map(s => ({ name: s.WITHOUT_TIME[0] })) || [{ name: '' }];
+            formValue.value.symbols = params.SYMBOLS?.map(s => ({ name: stripOkxSuffix(s?.WITHOUT_TIME?.[0] || '') })) || [{ name: '' }];
             formValue.value.exchange = params.ASSET_TYPE === 'CRYPTO' ? 'okx' : 'other';
             formValue.value.dataTypes.useDepth = params.DATA_TYPE?.USE_ORDER_BOOK || false;
             formValue.value.dataTypes.useTrade = params.DATA_TYPE?.USE_TRADE || false;
             formValue.value.dataTypes.ohlc = params.DATA_TYPE?.OHLC?.filter(o => o.USE).map(o => reverseTimeframeMap[o.TIME_TYPE]) || ['15m'];
             formValue.value.backtestPattern.name = params.BACKTEST?.BACKTEST_PATTERN?.PATTERN_NAME || 'OHLC';
             formValue.value.backtestPattern.params = params.BACKTEST?.BACKTEST_PATTERN?.PATTERN_PARAMS || { miss_ratio: 0.01, slippage: 0.005 };
+            formValue.value.matchingAlgorithm = params.CONFIG?.MATCHING_ALGORITHM || 'BEST_PRICE';
+            try {
+              const descRes = await getStrategyDescriptor(instance.strategyTemplateId);
+              const desc = descRes?.data ?? descRes;
+              if (desc?.legs?.length) strategyDescriptor.value = desc;
+            } catch (_) {}
           }
         }
       }
@@ -313,30 +374,65 @@ export default defineComponent({
     const handleSubmit = async () => {
       try {
         await formRef.value?.validate();
-        
+
+        const toBoolean = (v, defaultValue) => {
+          if (v === true || v === false) return v;
+          const raw = (v ?? defaultValue ?? '').toString().trim().toLowerCase();
+          if (raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y') return true;
+          if (raw === 'false' || raw === '0' || raw === 'no' || raw === 'n') return false;
+          return false;
+        };
+
         const formattedParams = formValue.value.parameters.map(p => {
-          const numValue = parseFloat(p.value);
+          const dataType = p.dataType || 'STRING';
+          const rawValue = p.value ?? p.defaultValue ?? '';
+
+          // IMPORTANT:
+          // JSON.stringify(NaN) => null
+          // 之前 BOOLEAN/STRING 也走 parseFloat，导致 true/false 变 NaN，再变 null。
+          let value;
           let valueType;
 
-          if (p.dataType === 'INT') {
-              valueType = 'INT';
-          } else if (p.dataType === 'DOUBLE' || p.dataType === 'FLOAT') {
-              if (Number.isInteger(numValue)) {
-                  valueType = 'INT';
-              } else {
-                  valueType = 'DECIMAL';
-              }
+          if (dataType === 'BOOLEAN') {
+            value = toBoolean(rawValue, p.defaultValue);
+            valueType = 'BOOLEAN';
+          } else if (dataType === 'STRING') {
+            value = rawValue == null ? '' : String(rawValue);
+            valueType = 'STRING';
           } else {
-              valueType = p.dataType;
+            const numValue = parseFloat(rawValue);
+            value = Number.isFinite(numValue) ? numValue : null;
+            if (dataType === 'INT') {
+              valueType = 'INT';
+            } else if (dataType === 'DOUBLE' || dataType === 'FLOAT') {
+              valueType = Number.isFinite(numValue) && Number.isInteger(numValue) ? 'INT' : 'DECIMAL';
+            } else {
+              valueType = dataType;
+            }
           }
-          
+
           return {
             NAME: p.name,
             TYPE: p.direction,
-            VALUE: numValue,
+            VALUE: value,
             VALUE_TYPE: valueType
           };
         });
+
+        const buildConfigFromDescriptor = () => {
+          if (!strategyDescriptor.value?.legs?.length) return {};
+          const config = {};
+          strategyDescriptor.value.legs.forEach((leg, i) => {
+            const s = formValue.value.symbols[i];
+            if (s?.name) config[leg.id] = stripOkxSuffix(s.name);
+          });
+          return config;
+        };
+        const descriptorConfig = buildConfigFromDescriptor();
+        const mergedConfig = {
+          ...descriptorConfig,
+          MATCHING_ALGORITHM: formValue.value.matchingAlgorithm,
+        };
 
         if (isEditMode.value) {
           const paramsObject = {
@@ -357,7 +453,8 @@ export default defineComponent({
             STUDIO_DB: "finone_crypto.db",
             ASSET_TYPE: "CRYPTO",
             RESULT_ID: generateUUID(),
-            SYMBOLS: formValue.value.symbols.map(s => ({ "WITHOUT_TIME": [s.name.includes('.') ? s.name : `${s.name}.${formValue.value.exchange.toLowerCase()}`] })),
+            SYMBOLS: formValue.value.symbols.map(s => ({ "WITHOUT_TIME": [stripOkxSuffix(s?.name || '')] })),
+            ...(Object.keys(mergedConfig).length ? { CONFIG: mergedConfig } : {}),
             PARAMS: formattedParams,
             CSV_OUTPUT_PATH: "backtest_results/",
             RATES_URL: "http://localhost:8080",
@@ -415,7 +512,8 @@ export default defineComponent({
               STUDIO_DB: "finone_crypto.db",
               ASSET_TYPE: "CRYPTO",
               RESULT_ID: generateUUID(),
-              SYMBOLS: formValue.value.symbols.map(s => ({ "WITHOUT_TIME": [s.name.includes('.') ? s.name : `${s.name}.${formValue.value.exchange.toLowerCase()}`] })),
+              SYMBOLS: formValue.value.symbols.map(s => ({ "WITHOUT_TIME": [stripOkxSuffix(s?.name || '')] })),
+              ...(Object.keys(mergedConfig).length ? { CONFIG: mergedConfig } : {}),
               PARAMS: formattedParams,
               CSV_OUTPUT_PATH: "backtest_results/",
               RATES_URL: "http://localhost:8080",
@@ -461,10 +559,14 @@ export default defineComponent({
       rules,
       isEditMode,
       loading,
+      currentTemplate,
+      strategyDescriptor,
       strategyTemplateOptions,
       symbolOptions,
       exchangeOptions,
       patternOptions,
+      matchingAlgorithmOptions,
+      isJavaTemplate,
       timeframeOptions,
       strategyTemplateStore,
       handleSubmit,

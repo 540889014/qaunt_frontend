@@ -166,6 +166,11 @@ export const getStrategyTemplateById = (id) => {
   return api.get(`/api/strategy-templates/${id}`)
 }
 
+/** Metadata-driven: legs + parameters for dynamic UI. Only JAVA templates return descriptor. */
+export const getStrategyDescriptor = (id) => {
+  return api.get(`/api/strategy-templates/${id}/descriptor`)
+}
+
 export const getStrategyTemplateScript = (id) => api.get(`/strategy-templates/${id}/script`)
 
 export const createStrategyTemplate = (formData) => {
@@ -202,6 +207,19 @@ export const updateBacktestInstance = (id, data) => {
   return api.put(`/api/backtest-instances/${id}`, data);
 };
 
+// --- Pairs Scanner API ---
+export const scanPairs = (payload) => {
+  return api.post('/api/v1/pairs-scanner/scan', payload);
+};
+
+export const getPairsScanRuns = (timeframe, limit = 20) => {
+  return api.get('/api/v1/pairs-scanner/runs', { params: { timeframe, limit } });
+};
+
+export const getPairsScanRunResults = (runId, limit = 200) => {
+  return api.get(`/api/v1/pairs-scanner/runs/${runId}/results`, { params: { limit } });
+};
+
 export const deleteBacktestInstance = (id) => {
   return api.delete(`/api/backtest-instances/${id}`);
 };
@@ -225,6 +243,18 @@ export const getBacktestReportLog = (strategyName, timestamp) => {
 
 export const deleteBacktestReport = (strategyName, timestamp) => {
   return api.delete(`/api/backtest-reports/${strategyName}/${timestamp}`);
+}
+
+// --- Backtest Reports by Instance ID API (for database-backed reports) ---
+export const getBacktestReportTimestampsByInstanceId = (instanceId) => {
+  return api.get(`/api/backtest-reports/instance/${instanceId}/timestamps`);
+}
+
+export const getBacktestReportDataByInstanceId = (instanceId, timestamp = null) => {
+  const url = timestamp 
+    ? `/api/backtest-reports/instance/${instanceId}?timestamp=${timestamp}`
+    : `/api/backtest-reports/instance/${instanceId}`;
+  return api.get(url);
 }
 
 export const getAdfTestResults = (timeframe, exchange) => api.get('/api/v1/statistical-arbitrage/adf-test', { params: { timeframe, exchange } });

@@ -7,6 +7,7 @@
             "subscriptions": "購読管理",
             "spread_tool": "スプレッドツール",
             "backtest": "バックテスト",
+            "pairs_scanner": "ペアスキャナー",
             "statistical_arbitrage": "統計的裁定",
             "user_management": "ユーザー管理",
             "login": "ログイン",
@@ -14,6 +15,64 @@
             "welcome": "ようこそ、{username}様",
             "strategy_templates": "戦略テンプレート",
             "backtest_instances": "バックテストインスタンス"
+        },
+        "pairs_scanner": {
+            "title": "ペアスキャナー",
+            "scan": "スキャン",
+            "scanning": "スキャン中...",
+            "timeframe": "時間枠",
+            "lookback_bars": "遡りバー数",
+            "top_n": "Top N",
+            "corr_threshold": "相関しきい値 abs(corr)",
+            "adf_t_threshold": "ADF t しきい値",
+            "adf_p_threshold": "ADF p-value しきい値",
+            "adf_p_hint": "ADF p-value は MacKinnon 近似（statsmodels と同等）。小さいほど定常。",
+            "max_pairs_after_corr": "相関後の最大ペア数",
+            "half_life_min": "半減期 最小(バー)",
+            "half_life_max": "半減期 最大(バー)",
+            "symbol_pool": "シンボルプール",
+            "select_symbols": "スキャンするシンボルを選択",
+            "symbol_count": "{n} 件選択",
+            "hint_data_source": "データ：ローカル data/{symbol}_{timeframe}.jbar を読み込み、アンカー時間軸で整列 + forward fill。",
+            "anchor": "アンカー",
+            "points": "ポイント",
+            "loaded_symbols": "読込シンボル数",
+            "candidates_after_corr": "相関後候補数",
+            "windows": {
+                "ols": "OLS ウィンドウ(バー)",
+                "adf": "ADF ウィンドウ(バー)",
+                "half_life": "半減期ウィンドウ(バー)",
+                "z": "Z ウィンドウ(バー)"
+            },
+            "history": {
+                "title": "履歴",
+                "refresh": "更新",
+                "run_id": "Run ID",
+                "created_at": "作成日時",
+                "duration_ms": "時間(ms)",
+                "view_results": "表示",
+                "empty": "履歴なし",
+                "loaded": "履歴結果を読み込みました"
+            },
+            "headers": {
+                "legA": "Leg A",
+                "legB": "Leg B",
+                "corr": "Corr",
+                "beta": "Beta",
+                "alpha": "Alpha",
+                "adf_t": "ADF t",
+                "adf_p": "ADF p",
+                "half_life": "Half-life",
+                "zero_crossings": "Crossings",
+                "current_z": "Current Z",
+                "score": "Score"
+            },
+            "errors": {
+                "min_symbols": "少なくとも2つのシンボルを選択してください"
+            },
+            "messages": {
+                "scan_finished": "スキャン完了"
+            }
         },
         "login": {
             "title": "アカウントにログイン",
@@ -265,6 +324,7 @@
                 "start_time_required": "開始時間は必須です。",
                 "end_time_required": "終了時間は必須です。",
                 "symbols": "シンボル",
+                "leg_config_hint": "戦略に基づき {n} 本のレッグ（1レッグ1契約）を表示。",
                 "symbol_placeholder": "例: BTC-USDT",
                 "add_symbol": "シンボルを追加",
                 "update_success_message": "インスタンスが正常に更新されました。",

@@ -5,7 +5,8 @@
       <div class="sm:flex-auto">
         <h1 class="text-2xl font-bold leading-6 text-gray-900 dark:text-white">{{ t('backtest_report.title') }}</h1>
         <p class="mt-2 text-sm text-gray-600 dark:text-gray-300">
-          {{ t('backtest_report.strategy') }}: <span class="font-semibold text-indigo-600 dark:text-indigo-400">{{ strategyName }}</span>
+          <span v-if="strategyName">{{ t('backtest_report.strategy') }}: <span class="font-semibold text-indigo-600 dark:text-indigo-400">{{ strategyName }}</span></span>
+          <span v-else-if="instanceId">{{ t('backtest_report.instance_id') }}: <span class="font-semibold text-indigo-600 dark:text-indigo-400">#{{ instanceId }}</span></span>
         </p>
       </div>
       <div class="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
@@ -23,8 +24,8 @@
       </div>
     </div>
 
-    <!-- Timestamp Selector -->
-    <div class="mt-8">
+    <!-- Timestamp Selector (only show if multiple timestamps available) -->
+    <div v-if="timestamps.length > 1" class="mt-8">
       <div class="relative">
         <label for="timestamp-select" class="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2">
           <svg class="inline w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -36,7 +37,7 @@
           <select 
             id="timestamp-select" 
             v-model="selectedTimestamp" 
-            @change="loadReportData" 
+            @change="instanceId ? loadReportDataByInstanceId(instanceId, selectedTimestamp) : loadReportData()" 
             class="appearance-none block w-full pl-4 pr-12 py-3 text-base border-2 border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 rounded-lg shadow-sm transition-all duration-200 hover:border-gray-300 dark:hover:border-gray-500"
           >
             <option disabled value="" class="text-gray-500">{{ t('backtest_report.select_report_placeholder') }}</option>
@@ -132,6 +133,47 @@
             :options="dailyReturnsOptions"
             :series="dailyReturnsSeries"
           />
+        </div>
+      </section>
+
+      <!-- Final Open Positions Section -->
+      <section v-if="openPositions && openPositions.length">
+        <h2 class="text-xl font-semibold text-gray-900 dark:text-white">{{ t('backtest_report.open_positions_title') }}</h2>
+        <div class="mt-4 flow-root">
+          <div class="-mx-4 -my-2 overflow-x-auto sm:-mx-6 lg:-mx-8">
+            <div class="inline-block min-w-full py-2 align-middle sm:px-6 lg:px-8">
+              <div class="overflow-hidden shadow ring-1 ring-black ring-opacity-5 sm:rounded-lg">
+                <table class="min-w-full divide-y divide-gray-300 dark:divide-gray-600">
+                  <thead class="bg-gray-50 dark:bg-gray-800">
+                    <tr>
+                      <th class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-gray-200">{{ t('backtest_report.open_positions_headers.symbol') }}</th>
+                      <th class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-gray-200">{{ t('backtest_report.open_positions_headers.side') }}</th>
+                      <th class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-gray-200">{{ t('backtest_report.open_positions_headers.quantity') }}</th>
+                      <th class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-gray-200">{{ t('backtest_report.open_positions_headers.avg_entry') }}</th>
+                      <th class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-gray-200">{{ t('backtest_report.open_positions_headers.mark') }}</th>
+                      <th class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-gray-200">{{ t('backtest_report.open_positions_headers.unrealized_pnl') }}</th>
+                      <th class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-gray-200">{{ t('backtest_report.open_positions_headers.open_time') }}</th>
+                      <th class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-gray-200">{{ t('backtest_report.open_positions_headers.holding_time') }}</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-900">
+                    <tr v-for="(p, idx) in openPositions" :key="idx" class="hover:bg-gray-50 dark:hover:bg-gray-800">
+                      <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-700 dark:text-gray-200">{{ p.symbol }}</td>
+                      <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-700 dark:text-gray-200">{{ formatPosSide(p.side) }}</td>
+                      <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-300">{{ formatNum(p.quantity) }}</td>
+                      <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-300">{{ formatNum(p.avg_entry) }}</td>
+                      <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-300">{{ formatNum(p.mark) }}</td>
+                      <td class="whitespace-nowrap px-3 py-4 text-sm" :class="Number(p.unrealized_pnl) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                        {{ formatNum(p.unrealized_pnl) }}
+                      </td>
+                      <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-300">{{ formatTs(p.open_ts) }}</td>
+                      <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-300">{{ formatDuration(p.holding_ms) }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -243,18 +285,24 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { getBacktestReportList, getBacktestReportData, getBacktestReportLog, deleteBacktestReport } from '@/api'
+import { useRoute } from 'vue-router'
+import { getBacktestReportList, getBacktestReportData, getBacktestReportLog, deleteBacktestReport, getBacktestReportTimestampsByInstanceId, getBacktestReportDataByInstanceId } from '@/api'
 import LoadingSpinner from '@/components/LoadingSpinner.vue'
 import ErrorMessage from '@/components/ErrorMessage.vue'
 import VueApexCharts from 'vue3-apexcharts'
 import NavBar from '@/components/NavBar.vue'
 
 const { t, locale } = useI18n()
+const route = useRoute()
 
 const props = defineProps({
   strategyName: {
     type: String,
-    required: true
+    required: false
+  },
+  instanceId: {
+    type: [String, Number],
+    required: false
   }
 })
 
@@ -264,6 +312,10 @@ const reportData = ref(null)
 const logContent = ref('')
 const loading = ref(false)
 const error = ref(null)
+
+// Get instanceId from props or route
+const instanceId = computed(() => props.instanceId || route.params.instanceId)
+const strategyName = computed(() => props.strategyName || route.params.strategyName)
 
 const ordersToShow = ref(20)
 const tradesToShow = ref(20)
@@ -360,11 +412,31 @@ onMounted(async () => {
   loading.value = true
   error.value = null
   try {
-    const response = await getBacktestReportList(props.strategyName)
-    timestamps.value = response
-    if (timestamps.value.length > 0) {
-      selectedTimestamp.value = timestamps.value[0]
-      await loadReportData()
+    // Check if we're using instanceId-based route
+    const currentInstanceId = instanceId.value
+    if (currentInstanceId) {
+      // Load reports by instance ID (from database)
+      const response = await getBacktestReportTimestampsByInstanceId(currentInstanceId)
+      // API interceptor extracts data field, so response is already the data array
+      timestamps.value = Array.isArray(response) ? response : (response?.data || [])
+      if (timestamps.value.length > 0) {
+        selectedTimestamp.value = timestamps.value[0]
+        await loadReportDataByInstanceId(currentInstanceId, selectedTimestamp.value)
+      } else {
+        // If no timestamps, try to load directly (single report scenario)
+        await loadReportDataByInstanceId(currentInstanceId)
+      }
+    } else if (strategyName.value) {
+      // Legacy: Load reports by strategy name (from file system)
+      const response = await getBacktestReportList(strategyName.value)
+      // API interceptor extracts data field
+      timestamps.value = Array.isArray(response) ? response : (response?.data || [])
+      if (timestamps.value.length > 0) {
+        selectedTimestamp.value = timestamps.value[0]
+        await loadReportData()
+      }
+    } else {
+      error.value = 'Either strategyName or instanceId must be provided'
     }
   } catch (err) {
     error.value = `Failed to load backtest report list: ${err.message}`
@@ -374,7 +446,7 @@ onMounted(async () => {
 })
 
 const loadReportData = async () => {
-  if (!selectedTimestamp.value) return
+  if (!selectedTimestamp.value || !props.strategyName) return
 
   loading.value = true
   error.value = null
@@ -383,16 +455,41 @@ const loadReportData = async () => {
 
   try {
     const dataResponse = await getBacktestReportData(props.strategyName, selectedTimestamp.value)
-    reportData.value = dataResponse
+    reportData.value = dataResponse.data || dataResponse
     ordersToShow.value = 20 // Reset on new data load
     tradesToShow.value = 20 // Reset on new data load
 
     const logResponse = await getBacktestReportLog(props.strategyName, selectedTimestamp.value)
-    if (Array.isArray(logResponse)) {
-      logContent.value = logResponse.join('\n')
+    const logData = logResponse.data || logResponse
+    if (Array.isArray(logData)) {
+      logContent.value = logData.join('\n')
     } else {
-      logContent.value = logResponse || ''
+      logContent.value = logData || ''
     }
+  } catch (err) {
+    error.value = `Failed to load report data: ${err.message}`
+    reportData.value = null
+    logContent.value = ''
+  } finally {
+    loading.value = false
+  }
+}
+
+const loadReportDataByInstanceId = async (instanceIdParam, timestampParam = null) => {
+  loading.value = true
+  error.value = null
+  reportData.value = null
+  logContent.value = ''
+
+  try {
+    const dataResponse = await getBacktestReportDataByInstanceId(instanceIdParam, timestampParam)
+    // API interceptor extracts data field, so dataResponse is already the BacktestReportDto
+    reportData.value = dataResponse
+    ordersToShow.value = 20 // Reset on new data load
+    tradesToShow.value = 20 // Reset on new data load
+    
+    // Log content is not available from database yet, set empty
+    logContent.value = 'Log content not available for database-backed reports.'
   } catch (err) {
     error.value = `Failed to load report data: ${err.message}`
     reportData.value = null
@@ -539,7 +636,10 @@ const dailyReturnsSeries = computed(() => {
   }
   const data = reportData.value.dailyIndicators.map(d => {
     const x = new Date(d.date).getTime();
-    const y = parseFloat(d.daily_return);
+    // Prefer USDT PnL for charting to avoid unit confusion.
+    // Fallback to daily_return (rate) for backward compatibility.
+    const yRaw = d.daily_pnl_usdt ?? d.daily_pnl ?? d.daily_return;
+    const y = parseFloat(yRaw);
     if (isNaN(x) || isNaN(y)) {
       return null;
     }
@@ -547,7 +647,7 @@ const dailyReturnsSeries = computed(() => {
   }).filter(Boolean);
 
   return [{
-    name: t('backtest_report.daily_return_series'),
+    name: t('backtest_report.daily_pnl_usdt_series'),
     data
   }]
 })
@@ -556,6 +656,9 @@ const dailyReturnsOptions = computed(() => ({
   chart: {
     type: 'bar',
     height: 350
+  },
+  dataLabels: {
+    enabled: false
   },
   title: {
     text: t('backtest_report.daily_returns_title'),
@@ -580,11 +683,47 @@ const dailyReturnsOptions = computed(() => ({
     },
     y: {
       formatter: (value) => {
-        return typeof value === 'number' ? `${value.toFixed(2)}` : value
+        return typeof value === 'number' ? `${value.toFixed(2)} USDT` : value
       }
     }
   }
 }));
+
+const openPositions = computed(() => {
+  return reportData.value?.openPositions || []
+})
+
+const formatNum = (v) => {
+  const n = parseFloat(v)
+  if (!Number.isFinite(n)) return 'N/A'
+  return n.toFixed(4)
+}
+
+const formatTs = (ts) => {
+  const n = parseInt(ts, 10)
+  if (!Number.isFinite(n) || n <= 0) return 'N/A'
+  return new Date(n).toLocaleString()
+}
+
+const formatDuration = (ms) => {
+  const n = parseInt(ms, 10)
+  if (!Number.isFinite(n) || n <= 0) return '0'
+  const sec = Math.floor(n / 1000)
+  const days = Math.floor(sec / 86400)
+  const hours = Math.floor((sec % 86400) / 3600)
+  const mins = Math.floor((sec % 3600) / 60)
+  if (days > 0) return `${days}d ${hours}h`
+  if (hours > 0) return `${hours}h ${mins}m`
+  return `${mins}m`
+}
+
+const formatPosSide = (side) => {
+  if (!side) return 'N/A'
+  const s = String(side).toUpperCase()
+  if (s === 'LONG') return t('backtest_report.long')
+  if (s === 'SHORT') return t('backtest_report.short')
+  return s
+}
 
 const formatValue = (value, key = '') => {
   if (value === null || value === undefined || (typeof value === 'string' && value.trim() === '')) {
@@ -619,16 +758,50 @@ const formatValue = (value, key = '') => {
 
 const formatKey = (key) => {
   if (!key) return '';
-  const translation = t(`backtest_report.metrics.${key}`);
-  // If translation is same as the key, it means no translation found, so format it.
-  if (translation === `backtest_report.metrics.${key}`) {
-      if (locale.value === 'en') return key; // For english, show raw key
-      return key
-        .split('_')
-        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-        .join(' ');
+  // Try to get translation from metrics
+  const translation = t(`backtest_report.metrics.${key}`, null);
+  // If translation exists and is different from the key path, use it
+  if (translation && translation !== `backtest_report.metrics.${key}`) {
+    return translation;
   }
-  return translation;
+  // Fallback: format the key for Chinese locale
+  if (locale.value === 'zh') {
+    // Chinese key mappings for common fields
+    const chineseMap = {
+      'symbol': '交易对',
+      'total_pnl_rate': '总盈亏率',
+      'annualized_return_rate': '年化收益率',
+      'sharpe_ratio': '夏普比率',
+      'calmar_ratio': '卡玛比率',
+      'sortino_ratio': '索提诺比率',
+      'win_rate': '胜率',
+      'profit_factor': '盈亏比',
+      'average_win': '平均盈利',
+      'average_loss': '平均亏损',
+      'largest_win': '最大盈利',
+      'largest_loss': '最大亏损',
+      'maximum_drawdown_rate': '最大回撤率',
+      'total_trades': '总交易数',
+      'winning_trades': '盈利交易数',
+      'losing_trades': '亏损交易数',
+      'total_fees': '总手续费',
+      'final_equity': '最终权益',
+      'initial_balance': '初始余额'
+    };
+    if (chineseMap[key]) {
+      return chineseMap[key];
+    }
+    // Fallback: format key with spaces and capitalize
+    return key
+      .split('_')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  }
+  // For English, show formatted key
+  return key
+    .split('_')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
 };
 
 const totalPerformance = computed(() => {
@@ -659,14 +832,23 @@ const symbolPerformanceHeaders = computed(() => {
 });
 
 const formatTimestamp = (ts) => {
-  if (!ts || ts.length !== 14) return ts
-  const year = ts.substring(0, 4)
-  const month = ts.substring(4, 6)
-  const day = ts.substring(6, 8)
-  const hour = ts.substring(8, 10)
-  const minute = ts.substring(10, 12)
-  const second = ts.substring(12, 14)
-  return `${year}-${month}-${day} ${hour}:${minute}:${second}`
+  if (!ts) return ts
+  // Handle timestamp format: yyyyMMddHHmmss (14 digits)
+  if (typeof ts === 'string' && ts.length === 14 && /^\d+$/.test(ts)) {
+    const year = ts.substring(0, 4)
+    const month = ts.substring(4, 6)
+    const day = ts.substring(6, 8)
+    const hour = ts.substring(8, 10)
+    const minute = ts.substring(10, 12)
+    const second = ts.substring(12, 14)
+    return `${year}-${month}-${day} ${hour}:${minute}:${second}`
+  }
+  // Handle numeric timestamp (Unix timestamp in milliseconds)
+  if (typeof ts === 'number' || (typeof ts === 'string' && /^\d+$/.test(ts) && ts.length > 14)) {
+    const date = new Date(parseInt(ts))
+    return date.toLocaleString()
+  }
+  return ts
 }
 
 // Helper function for debugging data range

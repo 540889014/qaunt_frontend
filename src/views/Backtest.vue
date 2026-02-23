@@ -50,8 +50,8 @@
             </div>
           </div>
 
-          <!-- 回测撮合模式配置 -->
-          <div class="space-y-4 border-b pb-6">
+          <!-- 回测撮合模式配置 (Python) -->
+          <div v-if="currentTemplate?.language === 'PYTHON'" class="space-y-4 border-b pb-6">
             <h3 class="text-lg font-medium text-gray-800">{{ $t('backtest.pattern_config') }}</h3>
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">{{ $t('backtest.pattern_name') }}</label>
@@ -66,6 +66,21 @@
                 <label for="slippage" class="block text-sm font-medium text-gray-700">{{ $t('backtest.slippage') }}</label>
                 <input type="number" v-model.number="coreParams.backtestPattern.params.slippage" id="slippage" step="0.001" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
               </div>
+            </div>
+          </div>
+
+          <!-- 撮合算法配置 (Java) -->
+          <div v-if="currentTemplate?.language === 'JAVA'" class="space-y-4 border-b pb-6">
+            <h3 class="text-lg font-medium text-gray-800">撮合算法配置</h3>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">撮合算法类型</label>
+              <n-select v-model:value="coreParams.matchingAlgorithm" :options="matchingAlgorithmOptions" class="max-w-sm"/>
+              <p class="mt-1 text-sm text-gray-500">
+                <span v-if="coreParams.matchingAlgorithm === 'BEST_PRICE'">最优价撮合：以最优买/卖价成交（最乐观）</span>
+                <span v-else-if="coreParams.matchingAlgorithm === 'MARKET_BEST'">市价撮合(盘口)：所有订单都当市价单，BUY 按 bestAsk、SELL 按 bestBid 成交（忽略限价）</span>
+                <span v-else-if="coreParams.matchingAlgorithm === 'MID_PRICE'">中价撮合：以中间价成交（中性）</span>
+                <span v-else-if="coreParams.matchingAlgorithm === 'SLIPPAGE'">滑点模拟：根据订单大小模拟滑点（更真实）</span>
+              </p>
             </div>
           </div>
 
@@ -215,6 +230,7 @@ export default defineComponent({
           slippage: 0.005,
         },
       },
+      matchingAlgorithm: 'BEST_PRICE', // For Java backtest engine: BEST_PRICE, MARKET_BEST, MID_PRICE, SLIPPAGE
     });
 
     const strategyParams = ref({});
@@ -230,6 +246,12 @@ export default defineComponent({
     // Static Options
     const exchangeOptions = [{ label: 'OKX', value: 'okx' }, { label: 'Binance', value: 'binance' }];
     const patternOptions = [{ label: 'OHLC', value: 'OHLC' }, { label: 'ORDERBOOK', value: 'ORDERBOOK' }];
+    const matchingAlgorithmOptions = [
+      { label: '最优价撮合 (Best Price)', value: 'BEST_PRICE' },
+      { label: '市价撮合(盘口) (Market @ Best Bid/Ask)', value: 'MARKET_BEST' },
+      { label: '中价撮合 (Mid Price)', value: 'MID_PRICE' },
+      { label: '滑点模拟 (Slippage)', value: 'SLIPPAGE' }
+    ];
     const timeframeMap = { '1m': 'ONE_MINUTE', '5m': 'FIVE_MINUTE', '15m': 'FIFTEEN_MINUTE', '1h': 'ONE_HOUR', '4h': 'FOUR_HOUR', '12h': 'TWELVE_HOUR', '1d': 'ONE_DAY' };
     const timeframeOptions = [
         { label: '1m', value: '1m' }, { label: '3m', value: '3m' }, { label: '5m', value: '5m' },
@@ -450,7 +472,9 @@ export default defineComponent({
                 }))
             },
             PARAMS: strategyParams.value,
-            LOG_LEVEL: 'INFO'
+            LOG_LEVEL: 'INFO',
+            // Add matching algorithm for Java backtest engine
+            ...(currentTemplate.value?.language === 'JAVA' ? { MATCHING_ALGORITHM: coreParams.value.matchingAlgorithm } : {})
         };
 
         try {

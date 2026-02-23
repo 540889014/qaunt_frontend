@@ -12,6 +12,7 @@
               <router-link to="/backtest-instances" class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium">{{ $t('nav.backtest_instances') }}</router-link>
               <router-link to="/spread-tool" class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium">{{ $t('nav.spread_tool') }}</router-link>
               <router-link to="/statistical-arbitrage" class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium">{{ $t('nav.statistical_arbitrage') }}</router-link>
+              <router-link to="/pairs-scanner" class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium">{{ $t('nav.pairs_scanner') }}</router-link>
               <router-link to="/subscriptions" class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium">{{ $t('nav.subscriptions') }}</router-link>
               <router-link to="/agent" class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium">Agent</router-link>
               <router-link v-if="isAdmin" to="/user-management" class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium">{{ $t('nav.user_management') }}</router-link>

@@ -21,11 +21,19 @@
               <n-input :value="param.name" readonly disabled />
             </td>
             <td class="px-6 py-4 whitespace-nowrap">
-              <n-input
-                :value="param.value"
-                @update:value="newValue => updateParameter(index, 'value', newValue)"
-                :placeholder="param.defaultValue || $t('common.please_input')"
-              />
+              <template v-if="param.dataType === 'BOOLEAN'">
+                <n-switch
+                  :value="toBoolean(param.value, param.defaultValue)"
+                  @update:value="newValue => updateParameter(index, 'value', newValue)"
+                />
+              </template>
+              <template v-else>
+                <n-input
+                  :value="param.value"
+                  @update:value="newValue => updateParameter(index, 'value', newValue)"
+                  :placeholder="param.defaultValue || $t('common.please_input')"
+                />
+              </template>
             </td>
             <td class="px-6 py-4 whitespace-nowrap">
               <n-select
@@ -54,7 +62,7 @@
 <script>
 import { defineComponent } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { NInput, NSelect, NButton } from 'naive-ui';
+import { NInput, NSelect, NButton, NSwitch } from 'naive-ui';
 
 export default defineComponent({
   name: 'ParameterEditor',
@@ -62,6 +70,7 @@ export default defineComponent({
     NInput,
     NSelect,
     NButton,
+    NSwitch,
   },
   props: {
     modelValue: {
@@ -72,6 +81,14 @@ export default defineComponent({
   emits: ['update:modelValue'],
   setup(props, { emit }) {
     const { t } = useI18n();
+
+    const toBoolean = (v, defaultValue) => {
+      if (v === true || v === false) return v;
+      const raw = (v ?? defaultValue ?? '').toString().trim().toLowerCase();
+      if (raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y') return true;
+      if (raw === 'false' || raw === '0' || raw === 'no' || raw === 'n') return false;
+      return false;
+    };
 
     const dataTypeOptions = [
       { label: 'Integer', value: 'INT' },
@@ -105,6 +122,7 @@ export default defineComponent({
 
     return {
       t,
+      toBoolean,
       dataTypeOptions,
       directionOptions,
       updateParameter,

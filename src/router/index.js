@@ -11,6 +11,7 @@ import StrategyTemplateList from '@/views/StrategyTemplateList.vue'
 import StrategyTemplateForm from '@/views/StrategyTemplateForm.vue'
 import BacktestInstanceList from '@/views/BacktestInstanceList.vue'
 import BacktestInstanceForm from '@/views/BacktestInstanceForm.vue'
+import PairsScanner from '@/views/PairsScanner.vue'
 import { useAuthStore } from '../stores/auth'
 
 const routes = [
@@ -61,6 +62,12 @@ const routes = [
     meta: { requiresAuth: true, title: '統計的裁定' }
   },
   {
+    path: '/pairs-scanner',
+    name: 'PairsScanner',
+    component: PairsScanner,
+    meta: { requiresAuth: true, title: 'Pairs Scanner' }
+  },
+  {
     path: '/backtest',
     name: 'Backtest',
     component: Backtest,
@@ -105,6 +112,13 @@ const routes = [
   {
     path: '/backtest-reports/:strategyName',
     name: 'BacktestReport',
+    component: () => import('@/views/BacktestReport.vue'),
+    props: true,
+    meta: { requiresAuth: true, title: 'Backtest Report' }
+  },
+  {
+    path: '/backtest-instances/:instanceId/report',
+    name: 'BacktestReportByInstance',
     component: () => import('@/views/BacktestReport.vue'),
     props: true,
     meta: { requiresAuth: true, title: 'Backtest Report' }

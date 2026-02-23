@@ -35,33 +35,29 @@ const chartRef = ref<HTMLElement | null>(null);
 const chartInstance = ref<ApexCharts | null>(null);
 
 const getChartOptions = (currentSeries: SeriesData[]): ApexOptions => {
-  const yaxes: ApexOptions['yaxis'] = [];
-  let spreadAxisUsed = false;
+  // IMPORTANT:
+  // - Do NOT create one y-axis per series. That makes each line use its own scale,
+  //   and visually breaks "Mean in the middle of Upper/Lower".
+  // - We keep exactly 2 y-axes: Spread (left) and Z Score (right).
+  const spreadSeriesNames = currentSeries.filter(s => s.yaxis !== 'zscore').map(s => s.name);
+  const zScoreSeriesNames = currentSeries.filter(s => s.yaxis === 'zscore').map(s => s.name);
 
-  currentSeries.forEach(s => {
-    if (s.yaxis === 'zscore') {
-      yaxes.push({
-        seriesName: s.name,
-        opposite: true,
-        title: { text: 'Z Score' },
-        labels: { formatter: (val: number) => val != null ? val.toFixed(2) : '' },
-      });
-    } else {
-      if (!spreadAxisUsed) {
-        yaxes.push({
-          seriesName: s.name,
-          title: { text: 'Spread' },
-          labels: { formatter: (val: number) => val != null ? `${(val * 100).toFixed(2)}%` : '' },
-        });
-        spreadAxisUsed = true;
-      } else {
-        yaxes.push({
-          seriesName: s.name,
-          show: false,
-        });
-      }
-    }
-  });
+  const yaxes: any[] = [
+    {
+      title: { text: 'Spread' },
+      labels: { formatter: (val: number) => val != null ? `${(val * 100).toFixed(2)}%` : '' },
+      ...(spreadSeriesNames.length ? { seriesName: spreadSeriesNames } : {}),
+    },
+  ];
+
+  if (zScoreSeriesNames.length) {
+    yaxes.push({
+      opposite: true,
+      title: { text: 'Z Score' },
+      labels: { formatter: (val: number) => val != null ? val.toFixed(2) : '' },
+      seriesName: zScoreSeriesNames,
+    });
+  }
 
   return {
     series: currentSeries,

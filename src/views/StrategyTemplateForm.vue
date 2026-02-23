@@ -16,6 +16,13 @@
             <n-input v-model:value="formValue.description" type="textarea" :placeholder="$t('templates.form.description_placeholder')" />
           </n-form-item>
 
+          <n-form-item label="Language" path="language">
+            <n-radio-group v-model:value="formValue.language" name="language">
+              <n-radio-button value="PYTHON">Python</n-radio-button>
+              <n-radio-button value="JAVA">Java</n-radio-button>
+            </n-radio-group>
+          </n-form-item>
+
           <n-form-item :label="$t('templates.form.script_file')" path="scriptFile">
             <div class="flex items-center space-x-4">
               <n-upload
@@ -80,9 +87,10 @@ import { useRouter, useRoute } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { useStrategyTemplateStore } from '@/stores/strategyTemplate';
 import { storeToRefs } from 'pinia';
-import { NForm, NFormItem, NInput, NButton, NUpload, useMessage, NSpin, NModal, NCard } from 'naive-ui';
+import { NForm, NFormItem, NInput, NButton, NUpload, useMessage, NSpin, NModal, NCard, NRadioGroup, NRadioButton } from 'naive-ui';
 import { Codemirror } from 'vue-codemirror';
 import { python } from '@codemirror/lang-python';
+import { java } from '@codemirror/lang-java';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { autocompletion } from '@codemirror/autocomplete';
 import { pythonApiContext } from '@/utils/python-completion-context.js';
@@ -211,6 +219,8 @@ export default defineComponent({
     NModal,
     NCard,
     Codemirror,
+    NRadioGroup,
+    NRadioButton,
   },
   setup() {
     const router = useRouter();
@@ -226,6 +236,7 @@ export default defineComponent({
       description: '',
       parameters: [],
       scriptFile: null,
+      language: 'PYTHON',
     });
     const initialFormValue = ref(null);
     const fileName = ref('');
@@ -246,10 +257,17 @@ export default defineComponent({
       return JSON.stringify(current) !== JSON.stringify(initial) || formValue.value.scriptFile !== null;
     });
 
-    const extensions = [python(), oneDark, pythonCompletions];
-
+    const extensions = computed(() => {
+        const langExt = formValue.value.language === 'JAVA' ? java() : python();
+        // pythonCompletions is specific to Python but won't crash Java mode, just won't be useful.
+        // Ideally we filter it out.
+        return formValue.value.language === 'JAVA' 
+            ? [langExt, oneDark] 
+            : [langExt, oneDark, pythonCompletions];
+    });
     const rules = {
       name: { required: true, message: () => t('templates.form.name_required'), trigger: 'blur' },
+      language: { required: true, message: 'Language is required', trigger: 'change' },
       scriptFile: { 
         required: !isEditMode.value, 
         message: () => t('templates.form.script_required'),
@@ -264,9 +282,16 @@ export default defineComponent({
         formValue.value.scriptFile = file.file;
         fileName.value = file.name;
         
+        // Infer language
+        if (file.name.endsWith('.java')) {
+            formValue.value.language = 'JAVA';
+        } else if (file.name.endsWith('.py')) {
+            formValue.value.language = 'PYTHON';
+        }
+
         try {
           const stream = file.file.stream();
-          const parsedParams = await parseStrategyParametersStream(stream);
+          const parsedParams = await parseStrategyParametersStream(stream, formValue.value.language);
 
           // Preserve existing types if in edit mode
           if (isEditMode.value && currentTemplate.value?.parameters) {
@@ -302,16 +327,19 @@ export default defineComponent({
     const handleCodeUpdate = async () => {
       parsingFile.value = true;
       try {
-        const blob = new Blob([scriptContent.value], { type: 'text/x-python' });
+        // Simple MIME type guess
+        const mime = formValue.value.language === 'JAVA' ? 'text/x-java-source' : 'text/x-python';
+        const blob = new Blob([scriptContent.value], { type: mime });
         const stream = blob.stream();
-        const parsedParams = await parseStrategyParametersStream(stream);
+        const parsedParams = await parseStrategyParametersStream(stream, formValue.value.language);
 
         formValue.value.parameters = parsedParams.map(p => {
             const existing = formValue.value.parameters.find(ep => ep.name === p.name);
             return existing ? { ...p, dataType: existing.dataType, direction: existing.direction } : p;
         });
-
-        const updatedFile = new File([blob], fileName.value || 'strategy.py', { type: 'text/x-python' });
+        
+        const ext = formValue.value.language === 'JAVA' ? '.java' : '.py';
+        const updatedFile = new File([blob], fileName.value || ('strategy' + ext), { type: mime });
         formValue.value.scriptFile = updatedFile;
         message.success(t('templates.form.code_updated_and_reparsed'));
       } catch (error) {
@@ -330,6 +358,7 @@ export default defineComponent({
           formData.append('name', formValue.value.name);
           formData.append('description', formValue.value.description);
           formData.append('parameters', JSON.stringify(formValue.value.parameters));
+          formData.append('language', formValue.value.language);
           if (formValue.value.scriptFile) {
             formData.append('scriptFile', formValue.value.scriptFile);
           }
@@ -364,6 +393,7 @@ export default defineComponent({
           formValue.value.name = store.currentTemplate.name;
           formValue.value.description = store.currentTemplate.description;
           formValue.value.parameters = store.currentTemplate.parameters || [];
+          formValue.value.language = store.currentTemplate.language || 'PYTHON';
           fileName.value = store.currentTemplate.fileName || '';
           
           // Store the initial state after loading

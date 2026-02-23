@@ -147,8 +147,8 @@ export default defineComponent({
     };
 
     const handleViewReports = (row) => {
-      const strategyName = `backtestInstance_${row.id}`;
-      router.push({ name: 'BacktestReport', params: { strategyName } });
+      // Use the new route for database-backed reports
+      router.push({ name: 'BacktestReportByInstance', params: { instanceId: row.id } });
     };
 
     const handleEdit = (row) => {
