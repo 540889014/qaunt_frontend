@@ -70,10 +70,25 @@ const getChartOptions = (currentSeries: SeriesData[]): ApexOptions => {
     colors: ['#008FFB', '#00E396', '#FEB019', '#FF4560', '#775DD0', '#546E7A', '#26a69a', '#D10CE8'],
     stroke: {
       curve: 'straight',
-      width: currentSeries.map(s => (s.name === 'Spread' || s.name === 'Z Score') ? 2 : 1.5),
-      dashArray: currentSeries.map(s => (s.name.includes('Upper') || s.name.includes('Lower')) ? 5 : 0),
+      width: currentSeries.map(s => {
+        if (s.type === 'scatter') return 0;
+        if (s.name === 'Spread' || s.name === 'Z Score') return 2;
+        if (s.name.startsWith('Grid L')) return 1;
+        if (s.name === 'Take Profit Line' || s.name === 'Next Add Trigger') return 1.5;
+        return 1.5;
+      }),
+      dashArray: currentSeries.map(s => {
+        if (s.type === 'scatter') return 0;
+        if (s.name.includes('Upper') || s.name.includes('Lower')) return 5;
+        if (s.name.startsWith('Grid L')) return 4;
+        if (s.name === 'Take Profit Line' || s.name === 'Next Add Trigger') return 6;
+        return 0;
+      }),
     },
-    markers: { size: 0 },
+    markers: {
+      size: currentSeries.map(s => s.type === 'scatter' ? 5 : 0),
+      strokeWidth: 0,
+    },
     xaxis: { type: 'datetime' },
     yaxis: yaxes,
     tooltip: {
@@ -83,9 +98,8 @@ const getChartOptions = (currentSeries: SeriesData[]): ApexOptions => {
       y: {
         formatter: (value: number, { seriesIndex, w }) => {
           if (value == null) return 'N/A';
-          const seriesName = w.globals.seriesNames[seriesIndex];
-          const spreadSeriesNames = ['Spread', 'Mean', 'Upper Band', 'Lower Band'];
-          if (spreadSeriesNames.includes(seriesName)) {
+          const seriesConfig = w.config.series?.[seriesIndex] as any;
+          if (seriesConfig?.yaxis === 'spread') {
             return `${(value * 100).toFixed(2)}%`;
           }
           return value.toFixed(4);

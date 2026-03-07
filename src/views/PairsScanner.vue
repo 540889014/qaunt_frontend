@@ -86,19 +86,55 @@
         </div>
       </div>
 
-      <div>
-        <div class="flex items-center justify-between mb-2">
-          <label class="block text-sm font-medium text-gray-700">{{ $t('pairs_scanner.symbol_pool') }}</label>
-          <span class="text-xs text-gray-500">{{ $t('pairs_scanner.symbol_count', { n: selectedSymbols.length }) }}</span>
+      <div class="space-y-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">{{ $t('pairs_scanner.asset_type') }}</label>
+            <n-select v-model:value="assetType" :options="assetTypeOptions" class="w-full" @update:value="onAssetTypeChange" />
+          </div>
+          <div v-if="assetType === 'CRYPTO'">
+            <label class="block text-sm font-medium text-gray-700 mb-1">{{ $t('subscriptions.exchange') }}</label>
+            <n-select v-model:value="exchange" :options="exchangeOptions" class="w-full" @update:value="fetchContracts" />
+          </div>
+          <div v-if="assetType === 'CRYPTO'">
+            <label class="block text-sm font-medium text-gray-700 mb-1">{{ $t('pairs_scanner.contract_type') }}</label>
+            <n-select v-model:value="instType" :options="instTypeOptions" class="w-full" @update:value="onInstTypeChange" />
+          </div>
+          <div v-if="assetType === 'CRYPTO'">
+            <label class="block text-sm font-medium text-gray-700 mb-1">{{ $t('pairs_scanner.coin_type') }}</label>
+            <n-select v-model:value="coinType" :options="coinTypeOptions" class="w-full" @update:value="fetchContracts" />
+          </div>
+          <div v-if="assetType === 'CRYPTO' && instType === 'SWAP'">
+            <label class="block text-sm font-medium text-gray-700 mb-1">{{ $t('pairs_scanner.margin_type') }}</label>
+            <n-select v-model:value="marginType" :options="marginTypeOptions" class="w-full" @update:value="onMarginTypeChange" />
+          </div>
         </div>
-        <n-select
-          v-model:value="selectedSymbols"
-          multiple
-          filterable
-          :options="symbolOptions"
-          :placeholder="$t('pairs_scanner.select_symbols')"
-        />
-        <p class="mt-2 text-xs text-gray-500">{{ $t('pairs_scanner.hint_data_source') }}</p>
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <label class="block text-sm font-medium text-gray-700">{{ $t('pairs_scanner.symbol_pool') }}</label>
+            <span class="flex items-center gap-2">
+              <span class="text-xs text-gray-500">{{ $t('pairs_scanner.symbol_count', { n: selectedSymbols.length }) }}</span>
+              <n-button
+                v-if="contractOptions.length > 0"
+                size="small"
+                quaternary
+                type="primary"
+                @click="selectAllContracts"
+              >
+                {{ $t('subscriptions.select_all') }}
+              </n-button>
+            </span>
+          </div>
+          <n-select
+            v-model:value="selectedSymbols"
+            multiple
+            filterable
+            :options="contractOptions"
+            :placeholder="$t('pairs_scanner.select_symbols')"
+            :disabled="assetType === 'CRYPTO' && (!exchange || !instType)"
+          />
+          <p class="mt-2 text-xs text-gray-500">{{ $t('pairs_scanner.hint_data_source') }}</p>
+        </div>
       </div>
     </div>
 
@@ -192,14 +228,54 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useMessage, NButton, NSelect, NInputNumber } from 'naive-ui';
 import NavBar from '@/components/NavBar.vue';
-import { scanPairs, getPairsScanRuns, getPairsScanRunResults } from '@/api';
-import { useSubscriptionStore } from '@/stores/subscription';
-import { storeToRefs } from 'pinia';
+import { scanPairs, getPairsScanRuns, getPairsScanRunResults, getMarketInstruments, getAllForexMetadata } from '@/api';
 
 const message = useMessage();
 const { t } = useI18n();
-const subscriptionStore = useSubscriptionStore();
-const { subscribedSymbols } = storeToRefs(subscriptionStore);
+
+const assetTypeOptions = computed(() => [
+  { label: t('subscriptions.asset_type_crypto'), value: 'CRYPTO' },
+  { label: t('subscriptions.asset_type_forex'), value: 'FOREX' },
+  { label: t('subscriptions.asset_type_nikkei'), value: 'NIKKEI', disabled: true },
+  { label: t('subscriptions.asset_type_us_stock'), value: 'US_STOCK', disabled: true },
+]);
+
+const exchangeOptions = [
+  { label: 'OKX', value: 'okx' },
+  { label: 'Binance', value: 'binance' },
+];
+
+const instTypeOptions = computed(() => [
+  { label: t('subscriptions.spot'), value: 'SPOT' },
+  { label: t('subscriptions.swap'), value: 'SWAP' },
+  { label: t('subscriptions.futures'), value: 'FUTURES' },
+]);
+
+const coinTypeOptions = computed(() => [
+  { label: t('pairs_scanner.coin_type_all'), value: '' },
+  { label: t('pairs_scanner.coin_type_mainstream'), value: 'MAINSTREAM' },
+  { label: 'Layer1', value: 'LAYER1' },
+  { label: 'Solana 生态', value: 'SOLANA' },
+  { label: 'AI', value: 'AI' },
+  { label: 'DeFi', value: 'DEFI' },
+  { label: 'Meme', value: 'MEME' },
+  { label: 'RWA', value: 'RWA' },
+  { label: 'GameFi', value: 'GAMEFI' },
+]);
+
+const marginTypeOptions = computed(() => [
+  { label: t('pairs_scanner.margin_type_all'), value: '' },
+  { label: t('pairs_scanner.margin_type_coin'), value: 'COIN' },
+  { label: t('pairs_scanner.margin_type_usdt'), value: 'USDT' },
+]);
+
+const assetType = ref('CRYPTO');
+const exchange = ref('okx');
+const instType = ref('SWAP');
+const coinType = ref(''); // '' = 全部
+const marginType = ref(''); // '' = 全部, COIN = 币本位, USDT = USDT本位
+const allInstruments = ref([]);
+const allForexPairs = ref([]);
 
 const loading = ref(false);
 const error = ref('');
@@ -235,10 +311,76 @@ const timeframeOptions = [
   { label: '1D', value: '1D' },
 ];
 
-const symbolOptions = computed(() => {
-  const list = Array.isArray(subscribedSymbols.value) ? subscribedSymbols.value : [];
-  return list.map(s => ({ label: s, value: s }));
+const contractOptions = computed(() => {
+  if (assetType.value === 'CRYPTO') {
+    let list = allInstruments.value || [];
+    if (instType.value === 'SWAP' && marginType.value) {
+      const u = (id) => (id || '').toUpperCase();
+      if (marginType.value === 'COIN') {
+        list = list.filter(item => u(item.instId).includes('-USD-SWAP'));
+      } else if (marginType.value === 'USDT') {
+        list = list.filter(item => u(item.instId).includes('-USDT-SWAP'));
+      }
+    }
+    return list.map(item => ({ label: item.instId, value: item.instId }));
+  }
+  if (assetType.value === 'FOREX') {
+    return (allForexPairs.value || []).map(item => ({ label: item.symbol, value: item.symbol }));
+  }
+  return [];
 });
+
+const fetchContracts = async () => {
+  selectedSymbols.value = [];
+  if (assetType.value === 'CRYPTO') {
+    if (!exchange.value || !instType.value) return;
+    try {
+      const ct = coinType.value && coinType.value.trim() ? coinType.value : undefined;
+      const data = await getMarketInstruments(instType.value, exchange.value, ct);
+      allInstruments.value = data || [];
+    } catch (err) {
+      console.error('Failed to fetch instruments:', err);
+      allInstruments.value = [];
+    }
+    allForexPairs.value = [];
+  } else if (assetType.value === 'FOREX') {
+    try {
+      const data = await getAllForexMetadata();
+      allForexPairs.value = data || [];
+    } catch (err) {
+      console.error('Failed to fetch forex pairs:', err);
+      allForexPairs.value = [];
+    }
+    allInstruments.value = [];
+  }
+};
+
+const onInstTypeChange = () => {
+  marginType.value = '';
+  fetchContracts();
+};
+
+const onMarginTypeChange = () => {
+  selectedSymbols.value = [];
+};
+
+const onAssetTypeChange = () => {
+  selectedSymbols.value = [];
+  coinType.value = '';
+  marginType.value = '';
+  if (assetType.value === 'FOREX') {
+    exchange.value = 'fxcm';
+    fetchContracts();
+  } else {
+    exchange.value = 'okx';
+    instType.value = 'SWAP';
+    fetchContracts();
+  }
+};
+
+const selectAllContracts = () => {
+  selectedSymbols.value = contractOptions.value.map(o => o.value);
+};
 
 const headers = [
   'legA', 'legB', 'corr', 'beta', 'alpha', 'adf_t', 'adf_p', 'half_life', 'zero_crossings', 'current_z', 'score'
@@ -266,6 +408,9 @@ const runScan = async () => {
       symbols,
       ...form,
       persist: true,
+      assetType: assetType.value,
+      exchange: assetType.value === 'CRYPTO' ? exchange.value : (assetType.value === 'FOREX' ? 'fxcm' : null),
+      instType: assetType.value === 'CRYPTO' ? instType.value : null,
     };
     const res = await scanPairs(payload);
     response.value = res;
@@ -322,11 +467,12 @@ const loadRunResults = async (runId) => {
 };
 
 onMounted(async () => {
-  // default exchange is okx elsewhere; subscription store expects exchange param
-  await subscriptionStore.fetchSubscriptions('okx');
+  await fetchContracts();
   // preselect a subset if too many
-  const list = Array.isArray(subscribedSymbols.value) ? subscribedSymbols.value : [];
-  selectedSymbols.value = list.slice(0, Math.min(50, list.length));
+  const opts = contractOptions.value;
+  if (opts.length > 0) {
+    selectedSymbols.value = opts.slice(0, Math.min(50, opts.length)).map(o => o.value);
+  }
   await loadRuns();
 });
 </script>

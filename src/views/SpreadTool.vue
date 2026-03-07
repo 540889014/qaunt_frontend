@@ -20,14 +20,14 @@
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
           <div class="form-group">
             <label for="leg1_symbol">{{ $t('spread_tool.select_leg_a') }}</label>
-            <input type="text" id="leg1_symbol" v-model="form.leg1.symbol" @input="onInput('leg1')" @focus="onInput('leg1')" autocomplete="off" class="w-full p-2 border rounded-md" @blur="() => onBlur('leg1')">
+            <input type="text" id="leg1_symbol" v-model="form.leg1.symbol" @input="onInput('leg1')" @focus="onInput('leg1')" autocomplete="off" class="w-full p-2 border rounded-md" @blur="onBlur('leg1')">
             <ul v-if="showDropdown.leg1 && filteredSymbols.leg1.length" class="dropdown-list">
               <li v-for="item in filteredSymbols.leg1" :key="item.key" @click="select('leg1', item)" class="px-4 py-2 hover:bg-gray-100 cursor-pointer">{{ item.display }}</li>
             </ul>
           </div>
           <div class="form-group">
             <label for="leg2_symbol">{{ $t('spread_tool.select_leg_b') }}</label>
-            <input type="text" id="leg2_symbol" v-model="form.leg2.symbol" @input="onInput('leg2')" @focus="onInput('leg2')" autocomplete="off" class="w-full p-2 border rounded-md" @blur="() => onBlur('leg2')">
+            <input type="text" id="leg2_symbol" v-model="form.leg2.symbol" @input="onInput('leg2')" @focus="onInput('leg2')" autocomplete="off" class="w-full p-2 border rounded-md" @blur="onBlur('leg2')">
             <ul v-if="showDropdown.leg2 && filteredSymbols.leg2.length" class="dropdown-list">
               <li v-for="item in filteredSymbols.leg2" :key="item.key" @click="select('leg2', item)" class="px-4 py-2 hover:bg-gray-100 cursor-pointer">{{ item.display }}</li>
             </ul>
@@ -61,20 +61,50 @@
         </div>
       </div>
 
-      <div v-if="spreadChartSeries.length > 0" class="chart-container">
+      <div v-if="bollingerChartSeries.length > 0" class="chart-container">
+        <h3 class="font-bold mb-2">{{ $t('spread_tool.chart_bollinger_title') }}</h3>
         <ApexKLineChartDualAxis
-          :series="spreadChartSeries"
-          :height="650"
-          class="mt-4"
+          :series="bollingerChartSeries"
+          :height="420"
+          class="mt-2"
         />
       </div>
-       <div v-if="spreadChartSeries.length > 0" class="controls-container mt-4 p-4 border rounded-lg shadow-sm bg-white">
+
+      <div v-if="zScoreChartSeries.length > 0" class="chart-container">
+        <h3 class="font-bold mb-2">{{ $t('spread_tool.chart_zscore_title') }}</h3>
+        <ApexKLineChartDualAxis
+          :series="zScoreChartSeries"
+          :height="420"
+          class="mt-2"
+        />
+      </div>
+       <div v-if="bollingerChartSeries.length > 0" class="controls-container mt-4 p-4 border rounded-lg shadow-sm bg-white">
         <h3 class="font-bold mb-2">{{ $t('spread_tool.bollinger_bands') }}</h3>
-        <div class="flex items-center gap-2">
+        <div class="flex flex-wrap items-center gap-2">
+          <span>{{ $t('spread_tool.spread_mode_label') }}</span>
+          <select v-model="spreadMode" class="p-1 border rounded-md">
+            <option value="ratio">{{ $t('spread_tool.spread_mode_ratio') }}</option>
+            <option value="anchor_return_diff">{{ $t('spread_tool.spread_mode_anchor_return_diff') }}</option>
+          </select>
           <span>{{ $t('spread_tool.bollinger_params_label') }}</span>
           <input type="number" v-model.number="bollPeriod" min="2" max="100" class="w-16 p-1 border rounded-md">
           <span>{{ $t('spread_tool.bollinger_std_dev_label') }}</span>
           <input type="number" v-model.number="bollStd" min="0.1" max="10" step="0.1" class="w-16 p-1 border rounded-md">
+          <span>{{ $t('spread_tool.z_score_line_label') }}</span>
+          <input type="number" v-model.number="zScoreLine" min="0.1" max="10" step="0.1" class="w-16 p-1 border rounded-md">
+          <span>{{ $t('spread_tool.grid_step_points_label') }}</span>
+          <input type="number" v-model.number="gridStepPoints" min="0.0001" max="1" step="0.0001" class="w-20 p-1 border rounded-md">
+          <span>{{ $t('spread_tool.close_z_threshold_label') }}</span>
+          <input type="number" v-model.number="closeZThreshold" min="0" max="2" step="0.01" class="w-20 p-1 border rounded-md">
+          <span>{{ $t('spread_tool.max_grid_levels_label') }}</span>
+          <input type="number" v-model.number="maxGridLevelsVis" min="1" max="12" step="1" class="w-16 p-1 border rounded-md">
+          <button
+            @click="applyChartParams"
+            type="button"
+            class="px-3 py-1 rounded-md bg-indigo-600 text-white hover:bg-indigo-700"
+          >
+            {{ $t('spread_tool.apply_params') }}
+          </button>
         </div>
       </div>
       <div v-if="error" class="error-message">{{ error }}</div>
@@ -86,7 +116,7 @@
 import { ref, computed, watch } from 'vue';
 import NavBar from '../components/NavBar.vue';
 import ApexKLineChartDualAxis from '../components/ApexKLineChartDualAxis.vue';
-import { getKlineData, getAllForexMetadata } from '../api';
+import { getKlineData, getAllForexMetadata, getMarketInstruments } from '../api';
 import { useExchangeStore } from '../stores/exchange';
 import { useSubscriptionStore } from '../stores/subscription';
 import { useI18n } from 'vue-i18n';
@@ -97,11 +127,17 @@ const subscriptionStore = useSubscriptionStore();
 
 const loading = ref(false);
 const error = ref('');
-const chartData = ref({ leg1: [], leg2: [], spread: [] });
-const spreadChartSeries = ref([]);
+const chartData = ref({ leg1: [], leg2: [], aligned: [], spread: [] });
+const bollingerChartSeries = ref([]);
+const zScoreChartSeries = ref([]);
 
 const bollPeriod = ref(20);
 const bollStd = ref(2.0);
+const zScoreLine = ref(2.0);
+const spreadMode = ref('anchor_return_diff');
+const gridStepPoints = ref(0.01);
+const closeZThreshold = ref(0.0);
+const maxGridLevelsVis = ref(6);
 
 const assetTypes = [
   { type: 'CRYPTO', label: 'subscriptions.asset_type_crypto', disabled: false },
@@ -141,8 +177,8 @@ const showDropdown = ref({ leg1: false, leg2: false });
 
 watch(activeAssetTypeTab, (newVal) => {
   const isCrypto = newVal === 'CRYPTO';
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  const sixMonthsAgo = new Date();
+  sixMonthsAgo.setDate(sixMonthsAgo.getDate() - 180);
   const today = new Date();
 
   form.value = {
@@ -150,11 +186,12 @@ watch(activeAssetTypeTab, (newVal) => {
     leg2: { symbol: '', exchange: isCrypto ? 'okx' : 'fxcm' },
     timeframe: '1h',
     exchange: isCrypto ? 'okx' : 'fxcm',
-    startTime: thirtyDaysAgo.toISOString().split('T')[0],
+    startTime: sixMonthsAgo.toISOString().split('T')[0],
     endTime: today.toISOString().split('T')[0],
   };
-  chartData.value = { leg1: [], leg2: [], spread: [] };
-  spreadChartSeries.value = [];
+  chartData.value = { leg1: [], leg2: [], aligned: [], spread: [] };
+  bollingerChartSeries.value = [];
+  zScoreChartSeries.value = [];
   error.value = '';
   loadSymbols();
 }, { immediate: true });
@@ -167,25 +204,41 @@ watch(() => form.value.exchange, (newEx) => {
   }
 });
 
-watch([bollPeriod, bollStd], () => {
-  updateCalculationsAndSeries();
-});
-
 async function loadSymbols() {
   try {
     loading.value = true;
     if (activeAssetTypeTab.value === 'CRYPTO') {
-      await subscriptionStore.fetchSubscriptions(form.value.exchange);
-      const cryptoSubs = subscriptionStore.subscriptions.filter(s => (s.assetType || 'CRYPTO') === 'CRYPTO');
-      const symbols = new Set(cryptoSubs.map(s => s.symbol));
+      // Prefer full exchange instruments for better UX (not only user's subscriptions).
+      let loaded = [];
+      try {
+        const instruments = await getMarketInstruments('SWAP', form.value.exchange);
+        loaded = (Array.isArray(instruments) ? instruments : [])
+          .map(item => item?.instId || item?.symbol || '')
+          .filter(Boolean);
+      } catch (e) {
+        // Fallback to subscription list when instrument API is unavailable.
+      }
+
+      if (!loaded.length) {
+        await subscriptionStore.fetchSubscriptions(form.value.exchange);
+        const cryptoSubs = subscriptionStore.subscriptions.filter(s => (s.assetType || 'CRYPTO') === 'CRYPTO');
+        loaded = cryptoSubs.map(s => s.symbol).filter(Boolean);
+      }
+
+      const symbols = new Set(loaded);
       allSymbols.value = Array.from(symbols).map(s => ({ key: s, display: s }));
     } else {
       const response = await getAllForexMetadata();
       allSymbols.value = response.map(d => ({ key: d.symbol, display: `${d.symbol} (${d.description})` }));
     }
+    // Seed dropdown candidates so focus can display immediately.
+    filteredSymbols.value.leg1 = allSymbols.value;
+    filteredSymbols.value.leg2 = allSymbols.value;
   } catch(e) {
     error.value = t('spread_tool.error_fetch_instruments');
     allSymbols.value = [];
+    filteredSymbols.value.leg1 = [];
+    filteredSymbols.value.leg2 = [];
   } finally {
     loading.value = false;
   }
@@ -213,8 +266,12 @@ function select(leg, item) {
 }
 
 function updateCalculationsAndSeries() {
+    if (chartData.value.aligned.length > 0) {
+        chartData.value.spread = computeSpreadSeries(chartData.value.aligned, spreadMode.value);
+    }
     if (chartData.value.spread.length === 0) {
-        spreadChartSeries.value = [];
+        bollingerChartSeries.value = [];
+        zScoreChartSeries.value = [];
         return;
     }
 
@@ -222,11 +279,14 @@ function updateCalculationsAndSeries() {
     const times = chartData.value.spread.map(item => item[0]);
     const period = bollPeriod.value;
     const stdMul = bollStd.value;
+    const zLine = Math.max(0.1, Number(zScoreLine.value) || 2.0);
 
     const bollMiddleData = [];
     const bollUpperData = [];
     const bollLowerData = [];
     const zScoreData = [];
+    const zUpperLineData = [];
+    const zLowerLineData = [];
 
     for (let i = 0; i < spreadValues.length; i++) {
         if (i < period - 1) {
@@ -234,6 +294,8 @@ function updateCalculationsAndSeries() {
             bollUpperData.push([times[i], null]);
             bollLowerData.push([times[i], null]);
             zScoreData.push([times[i], null]);
+            zUpperLineData.push([times[i], null]);
+            zLowerLineData.push([times[i], null]);
             continue;
         }
         const slice = spreadValues.slice(i - period + 1, i + 1);
@@ -249,15 +311,134 @@ function updateCalculationsAndSeries() {
             times[i],
             std !== 0 ? (spreadValues[i] - mean) / std : 0
         ]);
+        zUpperLineData.push([times[i], zLine]);
+        zLowerLineData.push([times[i], -zLine]);
     }
 
-    spreadChartSeries.value = [
+    const overlay = buildGridOverlay(
+      chartData.value.spread,
+      zScoreData,
+      zLine,
+      Math.max(0.0001, Number(gridStepPoints.value) || 0.01),
+      Math.max(0.0, Number(closeZThreshold.value) || 0.0),
+      Math.max(1, Math.floor(Number(maxGridLevelsVis.value) || 6))
+    );
+
+    bollingerChartSeries.value = [
         { name: 'Spread', type: 'line', data: chartData.value.spread, yaxis: 'spread' },
         { name: 'Mean', type: 'line', data: bollMiddleData, yaxis: 'spread' },
         { name: 'Upper Band', type: 'line', data: bollUpperData, yaxis: 'spread' },
         { name: 'Lower Band', type: 'line', data: bollLowerData, yaxis: 'spread' },
-        { name: 'Z Score', type: 'line', data: zScoreData, yaxis: 'zscore' }
+        ...overlay.gridLineSeries,
+        ...overlay.eventSeries
     ];
+
+    zScoreChartSeries.value = [
+        { name: 'Spread', type: 'line', data: chartData.value.spread, yaxis: 'spread' },
+        { name: 'Z Score', type: 'line', data: zScoreData, yaxis: 'zscore' },
+        { name: 'Z Upper Line', type: 'line', data: zUpperLineData, yaxis: 'zscore' },
+        { name: 'Z Lower Line', type: 'line', data: zLowerLineData, yaxis: 'zscore' },
+        ...overlay.gridLineSeries,
+        ...overlay.eventSeries
+    ];
+}
+
+function buildGridOverlay(spreadSeries, zScoreSeries, zLine, stepPoints, closeZ, maxLevels) {
+  const openPoints = [];
+  const addPoints = [];
+  const closePoints = [];
+  const nextAddLine = [];
+  const gridLevels = Array.from({ length: maxLevels }, (_, i) => ({
+    name: `Grid L${i + 1}`,
+    data: [],
+  }));
+
+  let active = false;
+  let direction = 0; // 1 short-spread, -1 long-spread
+  let entrySpread = 0;
+  let lastAddSpread = 0;
+  let levels = 0;
+
+  for (let i = 0; i < spreadSeries.length; i++) {
+    const ts = spreadSeries[i][0];
+    const spread = spreadSeries[i][1];
+    const z = zScoreSeries[i]?.[1];
+    if (!Number.isFinite(spread) || !Number.isFinite(z)) {
+      nextAddLine.push([ts, null]);
+      for (const g of gridLevels) g.data.push([ts, null]);
+      continue;
+    }
+
+    if (!active) {
+      if (z >= zLine || z <= -zLine) {
+        active = true;
+        direction = z >= zLine ? 1 : -1;
+        entrySpread = spread;
+        lastAddSpread = spread;
+        levels = 1;
+        openPoints.push([ts, spread]);
+      }
+    } else {
+      const shouldClose = direction === 1 ? z <= closeZ : z >= -closeZ;
+      if (shouldClose) {
+        closePoints.push([ts, spread]);
+        active = false;
+        direction = 0;
+        levels = 0;
+      } else {
+        const nextTrigger = direction === 1 ? lastAddSpread + stepPoints : lastAddSpread - stepPoints;
+        const hitAdd = levels < maxLevels &&
+          (direction === 1 ? spread >= nextTrigger : spread <= nextTrigger);
+        if (hitAdd) {
+          levels += 1;
+          lastAddSpread = spread;
+          addPoints.push([ts, spread]);
+        }
+      }
+    }
+
+    if (active) {
+      nextAddLine.push([ts, direction === 1 ? lastAddSpread + stepPoints : lastAddSpread - stepPoints]);
+      for (let lv = 0; lv < maxLevels; lv++) {
+        const levelValue = direction === 1
+          ? entrySpread + lv * stepPoints
+          : entrySpread - lv * stepPoints;
+        gridLevels[lv].data.push([ts, levelValue]);
+      }
+    } else {
+      nextAddLine.push([ts, null]);
+      for (const g of gridLevels) g.data.push([ts, null]);
+    }
+  }
+
+  const gridLineSeries = [
+    ...gridLevels.map(g => ({ name: g.name, type: 'line', data: g.data, yaxis: 'spread' })),
+    { name: 'Next Add Trigger', type: 'line', data: nextAddLine, yaxis: 'spread' }
+  ];
+
+  const eventSeries = [
+    { name: 'OPEN', type: 'scatter', data: openPoints, yaxis: 'spread' },
+    { name: 'ADD', type: 'scatter', data: addPoints, yaxis: 'spread' },
+    { name: 'CLOSE', type: 'scatter', data: closePoints, yaxis: 'spread' },
+  ];
+
+  return { gridLineSeries, eventSeries };
+}
+
+function computeSpreadSeries(alignedRows, mode) {
+  if (!Array.isArray(alignedRows) || alignedRows.length === 0) return [];
+  if (mode === 'anchor_return_diff') {
+    const a0 = alignedRows[0]?.a;
+    const b0 = alignedRows[0]?.b;
+    if (!(a0 > 0) || !(b0 > 0)) return [];
+    return alignedRows.map(row => {
+      const retA = row.a / a0 - 1.0;
+      const retB = row.b / b0 - 1.0;
+      return [row.ts, retA - retB];
+    });
+  }
+  // Legacy ratio mode: A/B - 1
+  return alignedRows.map(row => [row.ts, row.b !== 0 ? (row.a / row.b) - 1.0 : 0.0]);
 }
 
 async function fetchData() {
@@ -267,8 +448,9 @@ async function fetchData() {
   }
   loading.value = true;
   error.value = '';
-  chartData.value = { leg1: [], leg2: [], spread: [] };
-  spreadChartSeries.value = [];
+  chartData.value = { leg1: [], leg2: [], aligned: [], spread: [] };
+  bollingerChartSeries.value = [];
+  zScoreChartSeries.value = [];
 
   try {
     let startTime, endTime;
@@ -283,7 +465,7 @@ async function fetchData() {
       endTime = new Date(form.value.endTime).getTime();
     } else {
       const now = Date.now();
-      startTime = now - 3600 * 1000 * 24 * 30; // 30 days ago for crypto
+      startTime = now - 3600 * 1000 * 24 * 180; // 180 days ago for crypto
       endTime = now;
     }
 
@@ -302,19 +484,23 @@ async function fetchData() {
 
     const priceMap2 = new Map(data2.map(item => [item.x, item.y]));
     
-    const spreadData = [];
+    const alignedData = [];
     for (const item1 of data1) {
       if (priceMap2.has(item1.x)) {
-        const price1 = item1.y;
-        const price2 = priceMap2.get(item1.x);
-        const spreadValue = price2 !== 0 ? (price1 / price2) - 1 : 0;
-        spreadData.push([item1.x, spreadValue]);
+        alignedData.push({
+          ts: item1.x,
+          a: item1.y,
+          b: priceMap2.get(item1.x),
+        });
       }
     }
+
+    const spreadData = computeSpreadSeries(alignedData, spreadMode.value);
 
     chartData.value = {
         leg1: data1.sort((a,b) => a.x - b.x),
         leg2: data2.sort((a,b) => a.x - b.x),
+        aligned: alignedData.sort((a,b) => a.ts - b.ts),
         spread: spreadData.sort((a,b) => a[0] - b[0])
     };
 
@@ -326,6 +512,10 @@ async function fetchData() {
   } finally {
     loading.value = false;
   }
+}
+
+function applyChartParams() {
+  updateCalculationsAndSeries();
 }
 </script>
 

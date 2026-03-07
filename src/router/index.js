@@ -12,6 +12,9 @@ import StrategyTemplateForm from '@/views/StrategyTemplateForm.vue'
 import BacktestInstanceList from '@/views/BacktestInstanceList.vue'
 import BacktestInstanceForm from '@/views/BacktestInstanceForm.vue'
 import PairsScanner from '@/views/PairsScanner.vue'
+import DataConverter from '@/views/DataConverter.vue'
+import TrendResearchLab from '@/views/TrendResearchLab.vue'
+import TrendValidationReport from '@/views/TrendValidationReport.vue'
 import { useAuthStore } from '../stores/auth'
 
 const routes = [
@@ -66,6 +69,24 @@ const routes = [
     name: 'PairsScanner',
     component: PairsScanner,
     meta: { requiresAuth: true, title: 'Pairs Scanner' }
+  },
+  {
+    path: '/data-converter',
+    name: 'DataConverter',
+    component: DataConverter,
+    meta: { requiresAuth: true, title: 'Data Converter' }
+  },
+  {
+    path: '/trend-research',
+    name: 'TrendResearchLab',
+    component: TrendResearchLab,
+    meta: { requiresAuth: true, title: 'Trend Research Lab' }
+  },
+  {
+    path: '/trend-validation-report',
+    name: 'TrendValidationReport',
+    component: TrendValidationReport,
+    meta: { requiresAuth: true, title: 'Trend Validation Report' }
   },
   {
     path: '/backtest',

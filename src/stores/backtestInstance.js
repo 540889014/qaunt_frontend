@@ -27,11 +27,11 @@ export const useBacktestInstanceStore = defineStore('backtestInstance', {
       this.error = null;
       try {
         const response = await getBacktestInstances(page, size, sort);
-        this.instances = response.content;
-        this.pagination.page = response.number;
-        this.pagination.size = response.size;
-        this.pagination.totalElements = response.totalElements;
-        this.pagination.totalPages = response.totalPages;
+        this.instances = Array.isArray(response?.content) ? response.content : [];
+        this.pagination.page = Number.isFinite(response?.number) ? response.number : page;
+        this.pagination.size = Number.isFinite(response?.size) ? response.size : size;
+        this.pagination.totalElements = Number.isFinite(response?.totalElements) ? response.totalElements : this.instances.length;
+        this.pagination.totalPages = Number.isFinite(response?.totalPages) ? response.totalPages : 1;
       } catch (error) {
         this.error = error;
       } finally {
@@ -82,11 +82,11 @@ export const useBacktestInstanceStore = defineStore('backtestInstance', {
         this.error = null;
         try {
             await deleteBacktestInstance(id);
-            // Optimistically update the list
-            const index = this.instances.findIndex(i => i.id === id);
-            if (index !== -1) {
-              this.instances.splice(index, 1);
-            }
+            // Refresh current page from server to keep pagination consistent.
+            const targetPage = this.instances.length <= 1 && this.pagination.page > 0
+              ? this.pagination.page - 1
+              : this.pagination.page;
+            await this.fetchInstances(targetPage, this.pagination.size);
         } catch (error) {
             this.error = error;
             // If the API call fails, we might want to refresh the list to get the true state

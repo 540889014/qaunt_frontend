@@ -132,6 +132,9 @@ export const validateToken = () =>
 // ========== 订阅 ==========
 export const subscribe = (username, symbol, dataType, instType, timeframe, exchange, assetType) =>
   api.post('/api/v1/subscription/subscribe', null, { params: { username, symbol, dataType, instType, timeframe, exchange, assetType } })
+/** 批量订阅，避免浏览器 ERR_INSUFFICIENT_RESOURCES */
+export const subscribeBatch = (body) =>
+  api.post('/api/v1/subscription/subscribeBatch', body)
 export const unsubscribe = (username, symbol, dataType, exchange, timeframe = '', assetType) =>
   api.post('/api/v1/subscription/unsubscribe', null, { params: { username, symbol, dataType, exchange, timeframe, assetType } })
 export const getSubscriptionsByUsername = (username) => {
@@ -141,8 +144,8 @@ export const getSubscriptionsByDataType = (dataType, exchange = '') =>
   api.get('/api/v1/subscription/type', { params: { dataType, exchange } })
 
 // ========== 市场数据 ==========
-export const getKlineData = (symbol, timeframe, startTime, endTime, exchange = 'okx', assetType) =>
-  api.get('/api/v1/market/kline', { params: { symbol, timeframe, startTime, endTime, exchange, assetType } })
+export const getKlineData = (symbol, timeframe, startTime, endTime, exchange = 'okx', assetType, pageSize) =>
+  api.get('/api/v1/market/kline', { params: { symbol, timeframe, startTime, endTime, exchange, assetType, pageSize } })
 export const getRealtimeData = (symbol, exchange = 'okx') =>
   api.get('/api/v1/market/realtime', { params: { symbol, exchange } })
 export const getDepthData = (symbol, exchange = 'okx') =>
@@ -153,8 +156,8 @@ export const getAllForexMetadata = () => api.get('/api/forex/metadata/all')
 export const getInstruments = (instType) =>
   api.get('/api/v5/public/instruments', { params: { instType } })
 
-export const getMarketInstruments = (instType, exchange) =>
-  api.get('/api/v1/market/instruments', { params: { instType, exchange } });
+export const getMarketInstruments = (instType, exchange, coinType) =>
+  api.get('/api/v1/market/instruments', { params: { instType, exchange, coinType } });
 
 // --- Strategy Templates API ---
 
@@ -220,6 +223,10 @@ export const getPairsScanRunResults = (runId, limit = 200) => {
   return api.get(`/api/v1/pairs-scanner/runs/${runId}/results`, { params: { limit } });
 };
 
+// --- Data Converter API ---
+export const convertKlineData = (payload) => api.post('/api/v1/data-converter/kline', payload);
+export const convertDepthData = (payload) => api.post('/api/v1/data-converter/depth', payload);
+
 export const deleteBacktestInstance = (id) => {
   return api.delete(`/api/backtest-instances/${id}`);
 };
@@ -250,6 +257,10 @@ export const getBacktestReportTimestampsByInstanceId = (instanceId) => {
   return api.get(`/api/backtest-reports/instance/${instanceId}/timestamps`);
 }
 
+export const getBacktestHistoryList = (instanceId) => {
+  return api.get(`/api/backtest-reports/instance/${instanceId}/history`);
+}
+
 export const getBacktestReportDataByInstanceId = (instanceId, timestamp = null) => {
   const url = timestamp 
     ? `/api/backtest-reports/instance/${instanceId}?timestamp=${timestamp}`
@@ -257,12 +268,24 @@ export const getBacktestReportDataByInstanceId = (instanceId, timestamp = null) 
   return api.get(url);
 }
 
-export const getAdfTestResults = (timeframe, exchange) => api.get('/api/v1/statistical-arbitrage/adf-test', { params: { timeframe, exchange } });
-export const getKpssTestResults = (timeframe, exchange) => api.get('/api/v1/statistical-arbitrage/kpss-test', { params: { timeframe, exchange } });
-export const getHurstExponentResults = (timeframe, exchange) => api.get('/api/v1/statistical-arbitrage/hurst-exponent', { params: { timeframe, exchange } });
+export const getAdfTestResults = (timeframe, exchange, symbols) =>
+  api.get('/api/v1/statistical-arbitrage/adf-test', { params: { timeframe, exchange, symbols } });
+export const getKpssTestResults = (timeframe, exchange, symbols) =>
+  api.get('/api/v1/statistical-arbitrage/kpss-test', { params: { timeframe, exchange, symbols } });
+export const getHurstExponentResults = (timeframe, exchange, symbols) =>
+  api.get('/api/v1/statistical-arbitrage/hurst-exponent', { params: { timeframe, exchange, symbols } });
 export const recalculateStatisticalArbitrage = (timeframe, exchange) => api.post('/api/v1/statistical-arbitrage/recalculate', null, { params: { timeframe, exchange } });
 
 export const runBacktest = (payload) => api.post('/api/v1/backtest/run', payload);
+
+// --- Trend Research APIs ---
+export const getTrendResearchScan = (params) => api.get('/api/trend-research/scan', { params });
+export const getTrendResearchLatest = (params) => api.get('/api/trend-research/latest', { params });
+export const getTrendValidationHistory = (params) => api.get('/api/trend-research/validation-history', { params });
+export const getTrendSignalFactory = (params) => api.get('/api/trend-research/signal-factory', { params });
+export const getTrendSectorRadar = (params) => api.get('/api/trend-research/sector-radar', { params });
+export const getTrendRelativeStrength = (params) => api.get('/api/trend-research/relative-strength', { params });
+export const getTrendRegime = (params) => api.get('/api/trend-research/regime', { params });
 
 export default api 
 

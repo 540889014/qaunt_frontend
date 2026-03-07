@@ -12,9 +12,11 @@
           :columns="columns"
           :data="templates"
           :loading="loading"
-          :pagination="pagination"
+          :remote="true"
+          :pagination="paginationProps"
           :row-key="row => row.id"
           @update:page="handlePageChange"
+          @update:page-size="handlePageSizeChange"
         />
       </div>
     </div>
@@ -125,17 +127,25 @@ export default defineComponent({
       store.fetchTemplates(page - 1, pagination.value.size);
     };
 
+    const handlePageSizeChange = (pageSize) => {
+      store.fetchTemplates(0, pageSize);
+    };
+
     onMounted(() => {
       store.fetchTemplates();
     });
 
+    const paginationProps = computed(() => ({
+      page: pagination.value.page + 1,
+      pageSize: pagination.value.size,
+      itemCount: pagination.value.totalElements,
+      showSizePicker: true,
+      pageSizes: [10, 20, 50, 100],
+    }));
+
     return {
       templates,
-      pagination: computed(() => ({
-        page: pagination.value.page + 1,
-        pageSize: pagination.value.size,
-        itemCount: pagination.value.total,
-      })),
+      paginationProps,
       loading,
       columns,
       showDeleteModal,
@@ -144,6 +154,7 @@ export default defineComponent({
       handleDelete,
       confirmDelete,
       handlePageChange,
+      handlePageSizeChange,
     };
   },
 });

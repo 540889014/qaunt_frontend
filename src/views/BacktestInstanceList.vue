@@ -12,9 +12,11 @@
           :columns="columns"
           :data="instances"
           :loading="loading"
+          :remote="true"
           :pagination="paginationProps"
           :row-key="row => row.id"
           @update:page="handlePageChange"
+          @update:page-size="handlePageSizeChange"
         />
       </div>
     </div>
@@ -186,6 +188,10 @@ export default defineComponent({
       store.fetchInstances(page - 1, pagination.value.size);
     };
 
+    const handlePageSizeChange = (pageSize) => {
+      store.fetchInstances(0, pageSize);
+    };
+
     onMounted(() => {
       store.fetchInstances();
     });
@@ -194,6 +200,8 @@ export default defineComponent({
       page: pagination.value.page + 1,
       pageSize: pagination.value.size,
       itemCount: pagination.value.totalElements,
+      showSizePicker: true,
+      pageSizes: [10, 20, 50, 100],
     }));
 
     return {
@@ -207,6 +215,7 @@ export default defineComponent({
       handleDelete,
       confirmDelete,
       handlePageChange,
+      handlePageSizeChange,
       handleViewReports,
       handleRun
     };

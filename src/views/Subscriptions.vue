@@ -39,6 +39,7 @@
         <table class="table">
           <thead>
             <tr>
+              <th>序号</th>
               <th>{{ $t('subscriptions.product') }}</th>
               <th>{{ $t('subscriptions.exchange') }}</th>
               <th>Depth</th>
@@ -49,7 +50,8 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="agg in aggregatedList" :key="agg.key">
+            <tr v-for="(agg, index) in aggregatedList" :key="agg.key">
+              <td>{{ index + 1 }}</td>
               <td>{{ agg.symbol }}</td>
               <td>{{ agg.exchange }}</td>
               <td><input type="checkbox" v-model="editedStates[agg.key].depth" /></td>
@@ -88,23 +90,27 @@
             </select>
           </div>
           <div class="form-group">
-            <label for="symbol" class="form-label">{{ $t('subscriptions.instrument') }}</label>
-            <input
-              type="text"
+            <div class="flex items-center justify-between gap-2">
+              <label for="symbol" class="form-label">{{ $t('subscriptions.instrument') }}</label>
+              <button
+                v-if="activeAssetTypeTab === 'CRYPTO' && symbolSelectOptions.length"
+                type="button"
+                class="btn btn-secondary text-sm"
+                @click="selectAllSymbols"
+              >
+                {{ $t('subscriptions.select_all') }}
+              </button>
+            </div>
+            <n-select
               id="symbol"
-              v-model="subscriptionForm.symbol"
-              class="form-input"
-              @input="onSymbolInput"
-              @focus="onSymbolInput"
-              autocomplete="off"
-              required
+              v-model:value="selectedSymbols"
+              multiple
+              filterable
+              :options="symbolSelectOptions"
+              :placeholder="$t('subscriptions.instrument_placeholder')"
               :disabled="activeAssetTypeTab === 'CRYPTO' && (!selectedInstType || !subscriptionForm.exchange)"
+              class="form-input-select"
             />
-            <ul v-if="showSymbolDropdown && filteredSymbols.length" class="dropdown-list">
-              <li v-for="item in filteredSymbols" :key="item.instId || item.symbol" @click="selectSymbol(item)">
-                {{ item.instId || item.symbol }}
-              </li>
-            </ul>
           </div>
           <div class="form-group" v-if="activeAssetTypeTab === 'CRYPTO'">
             <label for="dataType" class="form-label">{{ $t('subscriptions.data_type') }}</label>
@@ -114,13 +120,16 @@
               </option>
             </select>
           </div>
-          <div class="form-group">
-            <label for="timeframe" class="form-label">{{ $t('subscriptions.kline_period') }}</label>
-            <select id="timeframe" v-model="selectedTimeframe" class="form-input" v-if="showTimeframe">
-              <option v-for="option in timeframeOptions" :key="option.value" :value="option.value">
-                {{ option.label }}
-              </option>
-            </select>
+          <div class="form-group" v-if="showTimeframe">
+            <label for="timeframe" class="form-label">{{ $t('subscriptions.kline_period_multi') }}</label>
+            <n-select
+              id="timeframe"
+              v-model:value="selectedTimeframes"
+              multiple
+              :options="timeframeOptions"
+              :placeholder="$t('subscriptions.kline_period_placeholder')"
+              class="form-input-select"
+            />
           </div>
           <div class="modal-actions">
             <button type="button" @click="closeModal" class="btn">{{ $t('subscriptions.cancel') }}</button>
@@ -146,18 +155,19 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, computed, watch, reactive } from 'vue';
+import { ref, onMounted, computed, watch, reactive } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useAuthStore } from '@/stores/auth';
 import { useExchangeStore } from '@/stores/exchange';
 import { 
   getSubscriptionsByUsername, 
-  subscribe, 
+  subscribeBatch, 
   unsubscribe, 
   getKlineData, 
   getAllForexMetadata,
   getMarketInstruments 
 } from '../api';
+import { NSelect } from 'naive-ui';
 import NavBar from '../components/NavBar.vue';
 import LoadingSpinner from '../components/LoadingSpinner.vue';
 import ErrorMessage from '../components/ErrorMessage.vue';
@@ -214,16 +224,18 @@ const timeframeOptions = computed(() => {
 });
 
 const selectedDataType = ref('ohlc');
-const selectedTimeframe = ref('1m');
+const selectedTimeframe = ref('1m'); // kept for non-ohlc if needed
+const selectedSymbols = ref([]);
+const selectedTimeframes = ref(['1m']);
 
 watch(activeAssetTypeTab, (newTab) => {
-  subscriptionForm.value.symbol = '';
-  filteredSymbols.value = [];
+  selectedSymbols.value = [];
+  selectedTimeframes.value = newTab === 'FOREX' ? [forexTimeframeOptions[0].value] : ['1m'];
   if (newTab === 'FOREX') {
     selectedDataType.value = 'ohlc';
     selectedTimeframe.value = forexTimeframeOptions[0].value;
     subscriptionForm.value.exchange = 'fxcm';
-  } else { // CRYPTO
+  } else {
     selectedDataType.value = 'ohlc';
     selectedTimeframe.value = cryptoTimeframeOptions[0].value;
     subscriptionForm.value.exchange = 'okx';
@@ -249,8 +261,20 @@ const selectedInstType = ref('SWAP');
 
 const allInstruments = ref([]);
 const allForexPairs = ref([]);
-const filteredSymbols = ref([]);
-const showSymbolDropdown = ref(false);
+
+const symbolSelectOptions = computed(() => {
+  if (activeAssetTypeTab.value === 'CRYPTO') {
+    return (allInstruments.value || []).map(item => ({ label: item.instId, value: item.instId }));
+  }
+  if (activeAssetTypeTab.value === 'FOREX') {
+    return (allForexPairs.value || []).map(item => ({ label: item.symbol, value: item.symbol }));
+  }
+  return [];
+});
+
+function selectAllSymbols() {
+  selectedSymbols.value = symbolSelectOptions.value.map(o => o.value);
+}
 
 const baseURL = import.meta.env.VITE_API_BASE_URL;
 
@@ -295,33 +319,47 @@ const fetchSubscriptions = async () => {
   }
 };
 
+// 使用后端批量订阅接口，一次请求完成所有订阅，避免浏览器 ERR_INSUFFICIENT_RESOURCES
 const handleSubmit = async () => {
+  const symbols = selectedSymbols.value || [];
+  const timeframes = selectedDataType.value === 'ohlc' ? (selectedTimeframes.value || []) : [];
+
+  if (symbols.length === 0) {
+    error.value = t('subscriptions.instrument_required');
+    return;
+  }
+  if (selectedDataType.value === 'ohlc' && timeframes.length === 0) {
+    error.value = t('subscriptions.timeframe_required');
+    return;
+  }
+
   try {
     const assetType = activeAssetTypeTab.value;
-    let { exchange, symbol } = subscriptionForm.value;
-    let instType = selectedInstType.value;
-    let timeframe = selectedTimeframe.value;
-    let dataType = selectedDataType.value;
+    const exchange = assetType === 'FOREX' ? 'fxcm' : subscriptionForm.value.exchange;
+    const instType = assetType === 'FOREX' ? assetType : selectedInstType.value;
+    const dataType = selectedDataType.value;
 
-    if (assetType === 'FOREX') {
-      exchange = 'fxcm';
-      instType = assetType;
-    }
-    
-    // When dataType is 'depth', timeframe is not applicable
+    const items = [];
     if (dataType === 'depth') {
-      timeframe = '';
+      for (const symbol of symbols) {
+        items.push({ symbol, timeframe: '' });
+      }
+    } else {
+      for (const symbol of symbols) {
+        for (const timeframe of timeframes) {
+          items.push({ symbol, timeframe });
+        }
+      }
     }
 
-    await subscribe(
-      authStore.username,
-      symbol,
+    await subscribeBatch({
+      username: authStore.username,
       dataType,
       instType,
-      timeframe,
       exchange,
-      assetType
-    );
+      assetType,
+      items,
+    });
 
     closeModal();
     fetchSubscriptions();
@@ -429,6 +467,8 @@ const closeModal = () => {
   subscriptionForm.value = { symbol: '', exchange: 'okx', dataType: 'ohlc', timeframe: '1m' };
   selectedDataType.value = 'ohlc';
   selectedTimeframe.value = '1m';
+  selectedSymbols.value = [];
+  selectedTimeframes.value = ['1m'];
 };
 
 const closeChartModal = () => {
@@ -451,50 +491,7 @@ onMounted(() => {
   fetchSubscriptions();
   fetchInstruments();
   fetchForexPairs();
-  document.addEventListener('click', handleSymbolClickOutside);
 });
-
-onUnmounted(() => {
-  document.removeEventListener('click', handleSymbolClickOutside);
-});
-
-const onSymbolInput = () => {
-  showSymbolDropdown.value = true;
-  const search = subscriptionForm.value.symbol.toLowerCase();
-  if (activeAssetTypeTab.value === 'CRYPTO') {
-    if (search) {
-      filteredSymbols.value = allInstruments.value.filter(item =>
-        item.instId.toLowerCase().includes(search)
-      );
-    } else {
-      filteredSymbols.value = allInstruments.value;
-    }
-  } else if (activeAssetTypeTab.value === 'FOREX') {
-    if (search) {
-      filteredSymbols.value = allForexPairs.value.filter(item =>
-        item.symbol.toLowerCase().includes(search)
-      );
-    } else {
-      filteredSymbols.value = allForexPairs.value;
-    }
-  }
-};
-
-function selectSymbol(item) {
-  if (activeAssetTypeTab.value === 'CRYPTO') {
-    subscriptionForm.value.symbol = item.instId;
-  } else if (activeAssetTypeTab.value === 'FOREX') {
-    subscriptionForm.value.symbol = item.symbol;
-  }
-  showSymbolDropdown.value = false;
-}
-
-function handleSymbolClickOutside(event) {
-  const symbolInputEl = document.getElementById('symbol');
-  if (symbolInputEl && !symbolInputEl.contains(event.target)) {
-    showSymbolDropdown.value = false;
-  }
-}
 
 // ---------- Aggregated view logic ---------- //
 
@@ -703,6 +700,9 @@ const deleteAllForSymbol = async (agg) => {
 .modal-content-large { max-width: 950px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 1rem; margin-top: 1.5rem; }
 .form-group { position: relative; }
+.form-input-select { width: 100%; min-height: 38px; }
+.btn-secondary { background: #6c757d; color: #fff; border: none; padding: 0.35rem 0.75rem; border-radius: 4px; cursor: pointer; }
+.btn-secondary:hover { background: #5a6268; }
 .dropdown-list { border: 1px solid #d0d7de; max-height: 220px; overflow-y: auto; background: #fff; position: absolute; z-index: 10; width: 100%; border-radius: 0 0 6px 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-top: -2px; padding: 0; list-style: none; }
 .dropdown-list li { padding: 10px 14px; cursor: pointer; font-size: 15px; color: #333; transition: background 0.15s; border-bottom: 1px solid #f0f0f0; }
 .dropdown-list li:last-child { border-bottom: none; }

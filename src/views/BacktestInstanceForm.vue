@@ -383,13 +383,12 @@ export default defineComponent({
           return false;
         };
 
+        const rangePattern = /^\s*-?\d+(?:\.\d+)?\s*-\s*-?\d+(?:\.\d+)?\s*:\s*-?\d+(?:\.\d+)?\s*$/;
+
         const formattedParams = formValue.value.parameters.map(p => {
           const dataType = p.dataType || 'STRING';
           const rawValue = p.value ?? p.defaultValue ?? '';
 
-          // IMPORTANT:
-          // JSON.stringify(NaN) => null
-          // 之前 BOOLEAN/STRING 也走 parseFloat，导致 true/false 变 NaN，再变 null。
           let value;
           let valueType;
 
@@ -400,14 +399,22 @@ export default defineComponent({
             value = rawValue == null ? '' : String(rawValue);
             valueType = 'STRING';
           } else {
-            const numValue = parseFloat(rawValue);
-            value = Number.isFinite(numValue) ? numValue : null;
-            if (dataType === 'INT') {
-              valueType = 'INT';
-            } else if (dataType === 'DOUBLE' || dataType === 'FLOAT') {
-              valueType = Number.isFinite(numValue) && Number.isInteger(numValue) ? 'INT' : 'DECIMAL';
+            const rawText = rawValue == null ? '' : String(rawValue).trim();
+
+            // Numeric range input like "20-50:10" for optimization.
+            if (rangePattern.test(rawText)) {
+              value = rawText;
+              valueType = 'RANGE';
             } else {
-              valueType = dataType;
+              const numValue = parseFloat(rawValue);
+              value = Number.isFinite(numValue) ? numValue : null;
+              if (dataType === 'INT') {
+                valueType = 'INT';
+              } else if (dataType === 'DOUBLE' || dataType === 'FLOAT') {
+                valueType = Number.isFinite(numValue) && Number.isInteger(numValue) ? 'INT' : 'DECIMAL';
+              } else {
+                valueType = dataType;
+              }
             }
           }
 
@@ -540,12 +547,14 @@ export default defineComponent({
         }
         
         router.push({ name: 'BacktestInstanceList' });
-      } catch (validationErrors) {
-        if (validationErrors) {
-          console.error('Form validation failed', validationErrors);
-        } else {
-          message.error(error.value?.message || t('common.error_unexpected'));
+      } catch (err) {
+        // Naive UI validation throws an array; API/runtime errors are Error objects.
+        if (Array.isArray(err)) {
+          console.error('Form validation failed', err);
+          return;
         }
+        console.error('Save failed', err);
+        message.error(err?.message || error.value?.message || t('common.error_unexpected'));
       }
     };
 

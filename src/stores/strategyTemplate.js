@@ -8,7 +8,8 @@ export const useStrategyTemplateStore = defineStore('strategyTemplate', {
     pagination: {
       page: 0,
       size: 10,
-      total: 0,
+      totalElements: 0,
+      totalPages: 0,
     },
     loading: false,
     error: null,
@@ -18,10 +19,11 @@ export const useStrategyTemplateStore = defineStore('strategyTemplate', {
       this.loading = true;
       try {
         const response = await api.getStrategyTemplates(page, size);
-        this.templates = response.content;
-        this.pagination.page = response.number;
-        this.pagination.size = response.size;
-        this.pagination.total = response.totalElements;
+        this.templates = Array.isArray(response?.content) ? response.content : [];
+        this.pagination.page = Number.isFinite(response?.number) ? response.number : page;
+        this.pagination.size = Number.isFinite(response?.size) ? response.size : size;
+        this.pagination.totalElements = Number.isFinite(response?.totalElements) ? response.totalElements : this.templates.length;
+        this.pagination.totalPages = Number.isFinite(response?.totalPages) ? response.totalPages : 1;
         this.error = null;
       } catch (error) {
         this.error = error.message || 'Failed to fetch strategy templates.';
@@ -79,13 +81,11 @@ export const useStrategyTemplateStore = defineStore('strategyTemplate', {
       this.loading = true;
       try {
         await api.deleteStrategyTemplate(id);
-        // Refresh the list after deletion
-        // Check if we need to go to the previous page
-        const newTotal = this.pagination.total - 1;
-        const lastPage = Math.ceil(newTotal / this.pagination.size) -1;
-        const currentPage = this.pagination.page;
-        const pageToGo = (currentPage > lastPage && lastPage >= 0) ? lastPage : currentPage;
-        await this.fetchTemplates(pageToGo, this.pagination.size);
+        // Refresh current page from server to keep pagination consistent.
+        const targetPage = this.templates.length <= 1 && this.pagination.page > 0
+          ? this.pagination.page - 1
+          : this.pagination.page;
+        await this.fetchTemplates(targetPage, this.pagination.size);
         this.error = null;
       } catch (error) {
         this.error = error.message || 'Failed to delete template.';
