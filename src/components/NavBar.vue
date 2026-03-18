@@ -1,7 +1,7 @@
 <template>
-  <nav class="bg-gray-800 shadow-md">
+  <nav class="shadow-md min-h-[72px] nav-bar-purple">
     <div class="container mx-auto px-4">
-      <div class="flex items-center justify-between h-16">
+      <div class="flex items-center justify-between min-h-[72px] py-3">
         <div class="flex items-center">
           <router-link to="/" class="text-white text-lg font-semibold">{{ $t('nav.title') }}</router-link>
           <div class="hidden md:block">
@@ -16,6 +16,7 @@
               <router-link to="/trend-research" class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium">{{ $t('nav.trend_research') }}</router-link>
               <router-link to="/trend-validation-report" class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium">{{ $t('nav.trend_validation_report') }}</router-link>
               <router-link to="/data-converter" class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium">{{ $t('nav.data_converter') }}</router-link>
+              <router-link to="/kline-sync-to-live" class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium">K线同步实盘</router-link>
               <router-link to="/subscriptions" class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium">{{ $t('nav.subscriptions') }}</router-link>
               <router-link to="/agent" class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium">Agent</router-link>
               <router-link v-if="isAdmin" to="/user-management" class="text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium">{{ $t('nav.user_management') }}</router-link>
@@ -90,3 +91,9 @@ export default {
   },
 };
 </script>
+
+<style scoped>
+.nav-bar-purple {
+  background: linear-gradient(135deg, #4a2c6a 0%, #3d2463 100%);
+}
+</style>

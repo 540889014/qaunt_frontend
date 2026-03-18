@@ -15,6 +15,7 @@ import PairsScanner from '@/views/PairsScanner.vue'
 import DataConverter from '@/views/DataConverter.vue'
 import TrendResearchLab from '@/views/TrendResearchLab.vue'
 import TrendValidationReport from '@/views/TrendValidationReport.vue'
+import KlineSyncToLive from '@/views/KlineSyncToLive.vue'
 import { useAuthStore } from '../stores/auth'
 
 const routes = [
@@ -75,6 +76,12 @@ const routes = [
     name: 'DataConverter',
     component: DataConverter,
     meta: { requiresAuth: true, title: 'Data Converter' }
+  },
+  {
+    path: '/kline-sync-to-live',
+    name: 'KlineSyncToLive',
+    component: KlineSyncToLive,
+    meta: { requiresAuth: true, title: 'K线同步到实盘' }
   },
   {
     path: '/trend-research',

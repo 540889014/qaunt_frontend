@@ -3,17 +3,18 @@ import { useAuthStore } from '../stores/auth'
 import { handleApiError } from '../utils/error-handler'
 import i18n from '@/i18n'
 
+// 默认用相对路径 /api，局域网访问时请求会发往当前页面域名，由 Vite 代理转发到后端
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api',
+  baseURL: import.meta.env.VITE_API_BASE_URL || '',
   timeout: 100000,
   headers: {
     'Content-Type': 'application/json'
   }
 })
 
-// Agent API（单独模块，默认端口 8099）
+// Agent API（单独模块）；默认相对路径 /api 由 Vite 代理，局域网可访问
 const agentApi = axios.create({
-  baseURL: import.meta.env.VITE_AGENT_API_BASE_URL || 'http://localhost:8099/api',
+  baseURL: import.meta.env.VITE_AGENT_API_BASE_URL || '',
   timeout: 120000,
   headers: {
     'Content-Type': 'application/json'
@@ -159,6 +160,22 @@ export const getInstruments = (instType) =>
 export const getMarketInstruments = (instType, exchange, coinType) =>
   api.get('/api/v1/market/instruments', { params: { instType, exchange, coinType } });
 
+/** 同步 K 线到实盘环境（max-quant-xasset）。body: { liveBaseUrl, timeframes?, lookbackBars? } */
+export const syncKlineToLive = (body) =>
+  api.post('/api/v1/kline-sync/to-live', body);
+
+/** 刷新实盘全市场订阅（按最新合约列表先退订再重订） */
+export const refreshFullMarketSubscribe = (liveBaseUrl) =>
+  api.post('/api/v1/kline-sync/refresh-subscribe', { liveBaseUrl });
+
+/** 从 OKX 拉取历史 K 线入库。params: { symbols?, allPerpetual?, timeframe?, limit? }，每合约最多 1440 条 */
+export const fetchHistoryCandles = (params) =>
+  api.get('/api/v1/kline/fetch-history', { params });
+
+/** 研究端 K 线比对：数据库 kline_data vs 二进制 .jbar（最近 200 条）。params: { symbol, timeframe?, exchange? } */
+export const compareKlineJbarDb = (params) =>
+  api.get('/api/v1/kline/compare-jbar-db', { params });
+
 // --- Strategy Templates API ---
 
 export const getStrategyTemplates = (page = 0, size = 10) => {
@@ -279,10 +296,19 @@ export const recalculateStatisticalArbitrage = (timeframe, exchange) => api.post
 export const runBacktest = (payload) => api.post('/api/v1/backtest/run', payload);
 
 // --- Trend Research APIs ---
+/** 获取当前趋势得分配置（服务端 application.yml trend.score），用于前端展示与请求覆盖 */
+export const getTrendScoreConfig = () => api.get('/api/trend-research/score-config');
 export const getTrendResearchScan = (params) => api.get('/api/trend-research/scan', { params });
 export const getTrendResearchLatest = (params) => api.get('/api/trend-research/latest', { params });
 export const getTrendValidationHistory = (params) => api.get('/api/trend-research/validation-history', { params });
+/** POST 参数网格：多组 tp/阈值/RS 等在固定区间内各跑一遍重算 */
+export const postTrendValidationGrid = (body) => api.post('/api/trend-research/validation-history-grid', body);
+/** 按 lastClosedBarTs + timeframe 查询该时间点实际扫描出的合约（xasset_scm_trend_scan_record） */
+export const getTrendScanRecords = (params) => api.get('/api/trend-research/scan-records', { params });
+/** 按计算时间取该时间点预期信号（研究端 trend_scan_result 快照），用于与实际扫描信号对比 */
+export const getTrendExpectedSignals = (params) => api.get('/api/trend-research/expected-signals', { params });
 export const getTrendSignalFactory = (params) => api.get('/api/trend-research/signal-factory', { params });
+export const getTrendScanLatestSignals = (params) => api.get('/api/trend-research/scan-latest-signals', { params });
 export const getTrendSectorRadar = (params) => api.get('/api/trend-research/sector-radar', { params });
 export const getTrendRelativeStrength = (params) => api.get('/api/trend-research/relative-strength', { params });
 export const getTrendRegime = (params) => api.get('/api/trend-research/regime', { params });

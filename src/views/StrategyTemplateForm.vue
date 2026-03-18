@@ -51,7 +51,7 @@
         </n-form>
       </div>
 
-      <n-modal v-model:show="showCodeModal" :mask-closable="false">
+      <n-modal v-model:show="showCodeModal" :mask-closable="false" to="body" :z-index="10500">
         <n-card
           style="width: 80vw; max-width: 1200px;"
           :title="$t('common.code_editor')"

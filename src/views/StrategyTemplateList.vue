@@ -22,6 +22,8 @@
     </div>
 
     <n-modal v-model:show="showDeleteModal" preset="dialog" title-style="font-weight: bold; font-size: 1.25rem;"
+             to="body"
+             :z-index="10500"
              :title="$t('templates.delete_confirm_title')"
              :content="$t('templates.delete_confirm_content')"
              :positive-text="$t('common.confirm')"

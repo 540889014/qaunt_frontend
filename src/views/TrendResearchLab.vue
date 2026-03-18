@@ -2,6 +2,33 @@
   <div class="min-h-screen bg-gray-50 dark:bg-gray-900">
     <NavBar />
     <div class="p-4 sm:p-6">
+      <!-- 趋势得分配置 -->
+      <section class="mb-4 p-4 rounded-lg bg-white dark:bg-gray-800 shadow">
+        <h2 class="text-lg font-semibold mb-3">趋势得分配置</h2>
+        <div class="flex flex-wrap items-end gap-3 mb-2">
+          <div class="flex items-center gap-2">
+            <input id="use-optimized-lab" v-model="query.useOptimized" type="checkbox" class="rounded border-gray-300" />
+            <label for="use-optimized-lab" class="text-sm text-gray-600 dark:text-gray-300">使用优化逻辑（4 根验证 / 板块 / RS 准入 / RSI 区间 / VSA upthrust / 123 buffer / 量比梯队 / ATR 过滤；不勾选为原始 2 根验证逻辑）</label>
+          </div>
+          <div>
+            <label class="block text-sm text-gray-600 dark:text-gray-300">信号阈值（≥此分才出 BUY/SELL_SEED，留空用服务端配置；最新行情扫描与实盘一致）</label>
+            <input v-model.number="query.signalThreshold" type="number" min="0" max="200" step="1" placeholder="如 65" class="px-3 py-2 border rounded-md bg-white dark:bg-gray-800 w-28 mt-1" />
+          </div>
+          <div>
+            <label class="block text-sm text-gray-600 dark:text-gray-300">RS 准入 TopN（0=全部，&gt;0=仅前 N 可出信号，与实盘一致；用于最新行情扫描）</label>
+            <input v-model.number="query.rsTopN" type="number" min="0" max="500" placeholder="20" class="px-3 py-2 border rounded-md bg-white dark:bg-gray-800 w-24 mt-1" />
+          </div>
+          <button
+            @click="loadScoreConfig"
+            :disabled="configLoading"
+            class="px-4 py-2 rounded-md bg-slate-600 text-white hover:bg-slate-700 disabled:opacity-50"
+          >
+            {{ configLoading ? $t('trend_research.loading') : '从服务端刷新配置' }}
+          </button>
+        </div>
+        <p v-if="scoreConfig" class="text-xs text-gray-500 dark:text-gray-400">当前服务端信号阈值: {{ scoreConfig.signalThreshold }}</p>
+      </section>
+
       <div class="flex flex-wrap items-end gap-3 mb-4">
         <div>
           <label class="block text-sm text-gray-600 dark:text-gray-300">{{ $t('trend_research.exchange') }}</label>
@@ -34,8 +61,35 @@
         </div>
         <div>
           <label class="block text-sm text-gray-600 dark:text-gray-300">{{ $t('trend_research.tp_pct') }}</label>
-          <input v-model.number="query.tpPct" type="number" min="0.1" max="20" step="0.1" class="px-3 py-2 border rounded-md bg-white dark:bg-gray-800 w-24" />
+          <input
+            v-model.number="query.tpPct"
+            type="number"
+            min="0.1"
+            max="20"
+            step="0.1"
+            class="px-3 py-2 border rounded-md bg-white dark:bg-gray-800 w-24 disabled:opacity-60 disabled:cursor-not-allowed"
+            :disabled="query.useDynamicTp"
+            :title="query.useDynamicTp ? '开启动态止盈时由止盈区间 [min,max] 决定，此值仅在不满足动态条件时兜底' : ''"
+          />
         </div>
+        <div class="flex items-center gap-2">
+          <input id="use-dynamic-tp-lab" v-model="query.useDynamicTp" type="checkbox" class="rounded border-gray-300" />
+          <label for="use-dynamic-tp-lab" class="text-sm text-gray-600 dark:text-gray-300">动态止盈（ATR 映射 [tpMin,tpMax]）</label>
+        </div>
+        <template v-if="query.useDynamicTp">
+          <div>
+            <label class="block text-sm text-gray-600 dark:text-gray-300">止盈区间 min(%)</label>
+            <input v-model.number="query.tpMin" type="number" min="0.1" max="20" step="0.1" class="px-3 py-2 border rounded-md bg-white dark:bg-gray-800 w-20" />
+          </div>
+          <div>
+            <label class="block text-sm text-gray-600 dark:text-gray-300">止盈区间 max(%)</label>
+            <input v-model.number="query.tpMax" type="number" min="0.1" max="50" step="0.1" class="px-3 py-2 border rounded-md bg-white dark:bg-gray-800 w-20" />
+          </div>
+          <div>
+            <label class="block text-sm text-gray-600 dark:text-gray-300">ATR 回看根数</label>
+            <input v-model.number="query.atrLookback" type="number" min="20" max="2000" class="px-3 py-2 border rounded-md bg-white dark:bg-gray-800 w-24" placeholder="200" />
+          </div>
+        </template>
         <div>
           <label class="block text-sm text-gray-600 dark:text-gray-300">{{ $t('trend_research.coin_type') }}</label>
           <select v-model="query.coinType" class="px-3 py-2 border rounded-md bg-white dark:bg-gray-800 min-w-36">
@@ -55,6 +109,13 @@
           class="px-4 py-2 rounded-md bg-orange-600 text-white hover:bg-orange-700 disabled:opacity-50"
         >
           {{ $t('trend_research.validate_trend') }}
+        </button>
+        <button
+          @click="runScanLatestSignals"
+          :disabled="latestSignalsLoading"
+          class="px-4 py-2 rounded-md bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50"
+        >
+          {{ latestSignalsLoading ? $t('trend_research.loading') : $t('trend_research.scan_latest_signals_btn') }}
         </button>
         <button
           @click="copyResearchData"
@@ -249,10 +310,66 @@
         <div v-else-if="klineModal.data.length === 0" class="text-sm text-gray-500 py-10">No Kline Data</div>
         <div v-else>
           <div class="text-xs text-gray-500 mb-2">points: {{ klineModal.data.length }}</div>
+          <div v-if="klineModal.gapWarning" class="text-xs text-amber-600 mb-2">{{ klineModal.gapWarning }}</div>
           <div v-if="klineModal.copyStatus" class="text-xs mb-2" :class="klineModal.copyError ? 'text-red-600' : 'text-green-600'">
             {{ klineModal.copyStatus }}
           </div>
           <apexcharts type="candlestick" :height="460" :options="klineOptions" :series="klineSeries" />
+        </div>
+      </div>
+    </div>
+
+    <!-- 最新行情信号扫描结果弹框 -->
+    <div v-if="latestSignalsModalVisible" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" @click.self="closeLatestSignalsModal">
+      <div class="bg-white dark:bg-gray-900 w-full max-w-5xl max-h-[90vh] rounded-lg shadow-lg flex flex-col">
+        <div class="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700 shrink-0">
+          <div>
+            <h3 class="text-lg font-semibold">{{ $t('trend_research.latest_signals_section') }}</h3>
+            <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">{{ $t('trend_research.latest_signals_hint') }}</p>
+            <p v-if="latestSignalsDataChecksum" class="text-xs font-mono text-gray-500 dark:text-gray-400 mt-1">dataChecksum: {{ latestSignalsDataChecksum }}</p>
+          </div>
+          <button class="px-3 py-1.5 rounded bg-gray-700 text-white hover:bg-gray-600" @click="closeLatestSignalsModal">
+            {{ $t('trend_research.close') }}
+          </button>
+        </div>
+        <div class="overflow-auto p-4">
+          <div v-if="latestSignals.length === 0" class="text-sm text-gray-500 py-8">暂无合适合约</div>
+          <div v-else class="overflow-x-auto">
+            <table class="min-w-full text-sm">
+              <thead>
+                <tr class="text-left border-b border-gray-200 dark:border-gray-700">
+                  <th class="py-2 pr-4 w-12 text-center">序号</th>
+                  <th class="py-2 pr-4">Symbol</th>
+                  <th class="py-2 pr-4">Sector</th>
+                  <th class="py-2 pr-4">Signal</th>
+                  <th class="py-2 pr-4">Score</th>
+                  <th class="py-2 pr-4">Change%</th>
+                  <th class="py-2 pr-4">RSI</th>
+                  <th class="py-2 pr-4">VolumeRatio</th>
+                  <th class="py-2 pr-4">{{ $t('trend_research.prediction') }}</th>
+                  <th class="py-2 pr-4">Reasons</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(s, idx) in latestSignals" :key="`latest-${s.symbol}-${s.signalType}`" class="border-b border-gray-100 dark:border-gray-800">
+                  <td class="py-2 pr-4 w-12 text-center text-gray-500">{{ idx + 1 }}</td>
+                  <td class="py-2 pr-4">
+                    <button class="text-blue-600 hover:underline" @click="openKlineFromLatestModal(s.symbol)">
+                      {{ s.symbol }}
+                    </button>
+                  </td>
+                  <td class="py-2 pr-4">{{ s.sector }}</td>
+                  <td class="py-2 pr-4">{{ signalTypeLabel(s.signalType) }}</td>
+                  <td class="py-2 pr-4">{{ s.score?.toFixed(2) }}</td>
+                  <td class="py-2 pr-4" :class="s.changePct >= 0 ? 'text-green-600' : 'text-red-600'">{{ s.changePct?.toFixed(2) }}</td>
+                  <td class="py-2 pr-4">{{ s.rsi?.toFixed(1) }}</td>
+                  <td class="py-2 pr-4">{{ s.volumeRatio?.toFixed(2) }}</td>
+                  <td class="py-2 pr-4">{{ s.predictionDirection }}</td>
+                  <td class="py-2 pr-4">{{ (s.reasons || []).join(', ') }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
@@ -262,9 +379,13 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import NavBar from '@/components/NavBar.vue'
-import { getTrendResearchScan, getTrendResearchLatest, getKlineData } from '@/api'
+import { getTrendScoreConfig, getTrendResearchScan, getTrendResearchLatest, getTrendScanLatestSignals, getKlineData } from '@/api'
 
 const loading = ref(false)
+const latestSignalsLoading = ref(false)
+const latestSignals = ref([])
+const latestSignalsDataChecksum = ref('')
+const latestSignalsModalVisible = ref(false)
 const error = ref('')
 const signals = ref([])
 const sectors = ref([])
@@ -277,6 +398,7 @@ const klineModal = ref({
   symbol: '',
   loading: false,
   error: '',
+  gapWarning: '',
   rawRows: [],
   data: [],
   startTime: 0,
@@ -311,7 +433,16 @@ const query = ref({
   topN: 50,
   tpPct: 2.0,
   coinType: '',
+  signalThreshold: undefined,
+  rsTopN: 20,
+  useOptimized: true,
+  useDynamicTp: false,
+  tpMin: 1.0,
+  tpMax: 9.0,
+  atrLookback: 200,
 })
+const scoreConfig = ref(null)
+const configLoading = ref(false)
 
 const coinTypeOptions = [
   { label: 'ALL', value: '' },
@@ -378,11 +509,35 @@ const directionalReturnPct = (row) => {
   return direction === 'DOWN' ? -raw : raw
 }
 
+const loadScoreConfig = async () => {
+  configLoading.value = true
+  try {
+    const data = await getTrendScoreConfig()
+    if (data && typeof data === 'object') {
+      scoreConfig.value = data
+      if (data.signalThreshold != null) query.value.signalThreshold = data.signalThreshold
+    }
+  } catch (e) {
+    error.value = e?.message || String(e)
+  } finally {
+    configLoading.value = false
+  }
+}
+
 const runFullScan = async () => {
   loading.value = true
   error.value = ''
   try {
-    const data = await getTrendResearchScan(query.value)
+    const params = { ...query.value }
+    if (params.signalThreshold == null || params.signalThreshold === '') delete params.signalThreshold
+    params.useOptimized = query.value.useOptimized !== false
+    if (!params.useDynamicTp) {
+      delete params.useDynamicTp
+      delete params.tpMin
+      delete params.tpMax
+      delete params.atrLookback
+    }
+    const data = await getTrendResearchScan(params)
     signals.value = Array.isArray(data?.signals) ? data.signals : []
     sectors.value = Array.isArray(data?.sectors) ? data.sectors : []
     relativeStrength.value = Array.isArray(data?.relativeStrength) ? data.relativeStrength : []
@@ -420,6 +575,60 @@ const runValidation = async () => {
   researchCopyError.value = false
 }
 
+function intervalMsForTimeframe(tf) {
+  if (!tf) return 3600000
+  const s = String(tf).toUpperCase()
+  if (s === '15M') return 15 * 60 * 1000
+  if (s === '30M') return 30 * 60 * 1000
+  if (s === '1H') return 3600000
+  if (s === '4H') return 4 * 60 * 60 * 1000
+  if (s === '1D') return 24 * 60 * 60 * 1000
+  return 3600000
+}
+
+const runScanLatestSignals = async () => {
+  latestSignalsLoading.value = true
+  error.value = ''
+  try {
+    const intervalMs = intervalMsForTimeframe(query.value.timeframe)
+    const asOfMs = Math.floor(Date.now() / intervalMs) * intervalMs
+    const list = await getTrendScanLatestSignals({
+      exchange: query.value.exchange,
+      timeframe: query.value.timeframe,
+      lookbackBars: query.value.lookbackBars,
+      symbolLimit: query.value.symbolLimit,
+      topN: query.value.topN,
+      coinType: query.value.coinType || undefined,
+      asOfMs,
+      signalThreshold: query.value.signalThreshold != null && query.value.signalThreshold !== '' ? Number(query.value.signalThreshold) : undefined,
+      rsTopN: query.value.rsTopN != null && query.value.rsTopN !== '' ? Number(query.value.rsTopN) : undefined,
+    })
+    const raw = list?.data != null ? list.data : list
+    if (raw && typeof raw === 'object' && Array.isArray(raw.signals)) {
+      latestSignals.value = raw.signals
+      latestSignalsDataChecksum.value = raw.dataChecksum != null ? String(raw.dataChecksum) : ''
+    } else {
+      latestSignals.value = Array.isArray(raw) ? raw : []
+      latestSignalsDataChecksum.value = ''
+    }
+    latestSignalsModalVisible.value = true
+  } catch (e) {
+    error.value = e?.message || String(e)
+    latestSignals.value = []
+  } finally {
+    latestSignalsLoading.value = false
+  }
+}
+
+const closeLatestSignalsModal = () => {
+  latestSignalsModalVisible.value = false
+}
+
+const openKlineFromLatestModal = (symbol) => {
+  closeLatestSignalsModal()
+  openKline(symbol)
+}
+
 const signalTypeLabel = (v) => {
   const map = {
     BUY_SEED: '强势买入',
@@ -442,6 +651,7 @@ const openKline = async (symbol) => {
     symbol,
     loading: true,
     error: '',
+    gapWarning: '',
     rawRows: [],
     data: [],
     startTime,
@@ -468,8 +678,10 @@ const openKline = async (symbol) => {
       return { x: ts, y: [o, h, l, c] }
     }).filter((p) => Number.isFinite(p.x) && p.y.every(Number.isFinite)) : []
     normalized.sort((a, b) => a.x - b.x)
+    const gapWarning = analyzeKlineGaps(normalized, barMs)
     klineModal.value.rawRows = Array.isArray(rows) ? rows : []
     klineModal.value.data = normalized
+    klineModal.value.gapWarning = gapWarning
   } catch (e) {
     klineModal.value.error = e?.message || String(e)
   } finally {
@@ -553,6 +765,25 @@ const timeframeToMs = (tf) => {
     '1d': 24 * 60 * 60 * 1000,
   }
   return map[key] || 60 * 60 * 1000
+}
+
+const analyzeKlineGaps = (points, barMs) => {
+  if (!Array.isArray(points) || points.length < 2 || !Number.isFinite(barMs) || barMs <= 0) return ''
+  let missingBars = 0
+  let maxGapBars = 0
+  for (let i = 1; i < points.length; i++) {
+    const prevTs = Number(points[i - 1]?.x)
+    const curTs = Number(points[i]?.x)
+    const delta = curTs - prevTs
+    if (!Number.isFinite(delta) || delta <= barMs) continue
+    const gapBars = Math.floor(delta / barMs) - 1
+    if (gapBars > 0) {
+      missingBars += gapBars
+      if (gapBars > maxGapBars) maxGapBars = gapBars
+    }
+  }
+  if (missingBars <= 0) return ''
+  return `检测到K线缺口：约缺失 ${missingBars} 根（最大连续缺 ${maxGapBars} 根）。这通常是数据库同步缺口，趋势计算使用的二进制数据可能更完整。`
 }
 
 onMounted(async () => {

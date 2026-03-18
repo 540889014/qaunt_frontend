@@ -405,7 +405,9 @@ export default defineComponent({
     };
 
     const connectWebSocket = () => {
-        const socket = new SockJS(`${import.meta.env.VITE_API_BASE_URL}/ws`);
+        const apiBase = import.meta.env.VITE_API_BASE_URL || '';
+        const wsUrl = apiBase ? `${apiBase.replace(/\/$/, '')}/ws` : '/ws';
+        const socket = new SockJS(wsUrl);
         stompClient.value = Stomp.over(socket);
         stompClient.value.connect({}, () => {
             logs.value.push({type: 'info', message: 'WebSocket connected successfully. Waiting for backtest data...'});
