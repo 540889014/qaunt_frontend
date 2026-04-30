@@ -29,6 +29,69 @@
         <p v-if="scoreConfig" class="text-xs text-gray-500 dark:text-gray-400">当前服务端信号阈值: {{ scoreConfig.signalThreshold }}</p>
       </section>
 
+      <!-- 白名单内高波动筛选（Top150 → 取振幅最大 N 个） -->
+      <section class="mb-4 p-4 rounded-lg bg-white dark:bg-gray-800 shadow">
+        <h2 class="text-lg font-semibold mb-2">白名单高波动筛选</h2>
+        <p class="text-xs text-gray-500 dark:text-gray-400 mb-3 max-w-4xl">
+          在流动性白名单（约 150 个 U 本位永续）中，用 Binance 24h 全市场行情计算<strong>振幅%</strong> = (24h 最高 − 24h 最低) / 最新价 × 100，按振幅降序取前 N 名（默认 30）。
+        </p>
+        <div class="flex flex-wrap items-end gap-3 mb-3">
+          <div>
+            <label class="block text-sm text-gray-600 dark:text-gray-300">取前 N 个</label>
+            <input
+              v-model.number="whitelistVolTopN"
+              type="number"
+              min="1"
+              max="150"
+              class="px-3 py-2 border rounded-md bg-white dark:bg-gray-800 w-24 mt-1"
+            />
+          </div>
+          <button
+            type="button"
+            @click="loadWhitelistTopVolatility"
+            :disabled="whitelistVolLoading"
+            class="px-4 py-2 rounded-md bg-cyan-600 text-white hover:bg-cyan-700 disabled:opacity-50"
+          >
+            {{ whitelistVolLoading ? '加载中…' : '刷新排名' }}
+          </button>
+          <button
+            type="button"
+            v-if="whitelistVolRows.length"
+            @click="copyWhitelistVolSymbols"
+            class="px-4 py-2 rounded-md border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
+          >
+            复制合约列表
+          </button>
+          <span v-if="whitelistVolCopyStatus" class="text-sm" :class="whitelistVolCopyError ? 'text-red-600' : 'text-green-600'">{{ whitelistVolCopyStatus }}</span>
+        </div>
+        <div v-if="whitelistVolError" class="text-sm text-red-600 dark:text-red-400 mb-2">{{ whitelistVolError }}</div>
+        <div v-if="whitelistVolRows.length" class="overflow-x-auto">
+          <table class="min-w-full text-sm">
+            <thead>
+              <tr class="text-left border-b border-gray-200 dark:border-gray-700">
+                <th class="py-2 pr-3">#</th>
+                <th class="py-2 pr-3">Symbol</th>
+                <th class="py-2 pr-3">24h 振幅%</th>
+                <th class="py-2 pr-3">24h 涨跌%</th>
+                <th class="py-2 pr-3">最新价</th>
+                <th class="py-2 pr-3">24h 成交额(USDT)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(row, idx) in whitelistVolRows" :key="row.symbol" class="border-b border-gray-100 dark:border-gray-800">
+                <td class="py-2 pr-3 text-gray-500">{{ idx + 1 }}</td>
+                <td class="py-2 pr-3 font-mono">{{ row.symbol }}</td>
+                <td class="py-2 pr-3 font-semibold">{{ fmtVolRange(row.rangePct24h) }}</td>
+                <td class="py-2 pr-3" :class="numChangeClass(row.priceChangePercent)">{{ fmtChange(row.priceChangePercent) }}</td>
+                <td class="py-2 pr-3">{{ fmtPx(row.lastPrice) }}</td>
+                <td class="py-2 pr-3">{{ fmtQuoteVol(row.quoteVolume) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p v-else-if="!whitelistVolLoading && whitelistVolFetched" class="text-sm text-gray-500 py-4">白名单内无可用行情（或请求失败）。</p>
+      </section>
+
       <div class="flex flex-wrap items-end gap-3 mb-4">
         <div>
           <label class="block text-sm text-gray-600 dark:text-gray-300">{{ $t('trend_research.exchange') }}</label>
@@ -36,6 +99,18 @@
             <option value="okx">OKX</option>
             <option value="binance">Binance</option>
           </select>
+        </div>
+        <div class="flex items-center gap-2">
+          <input
+            id="use-vol-sync-lab"
+            v-model="query.useVolumeSyncKline"
+            type="checkbox"
+            class="rounded border-gray-300"
+            :disabled="query.exchange !== 'binance'"
+          />
+          <label for="use-vol-sync-lab" class="text-sm text-gray-600 dark:text-gray-300 max-w-md">
+            成交量节拍 K 线（BTC 对齐，仅 Binance；数据目录 <code class="text-xs">binance/volume_sync/*_BTCVOLSYNC.jbar</code>）
+          </label>
         </div>
         <div>
           <label class="block text-sm text-gray-600 dark:text-gray-300">{{ $t('trend_research.timeframe') }}</label>
@@ -88,6 +163,9 @@
           <div>
             <label class="block text-sm text-gray-600 dark:text-gray-300">ATR 回看根数</label>
             <input v-model.number="query.atrLookback" type="number" min="20" max="2000" class="px-3 py-2 border rounded-md bg-white dark:bg-gray-800 w-24" placeholder="200" />
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 max-w-xs">
+              有效不超过训练段长度；过大时 ATR 区间顶满。与收盘波动按窗口混合，改 80/200/500 对比更明显。
+            </p>
           </div>
         </template>
         <div>
@@ -112,7 +190,8 @@
         </button>
         <button
           @click="runScanLatestSignals"
-          :disabled="latestSignalsLoading"
+          :disabled="latestSignalsLoading || query.useVolumeSyncKline"
+          :title="query.useVolumeSyncKline ? '成交量节拍 K 线非等周期，请关闭上方开关后再用最新行情扫描' : ''"
           class="px-4 py-2 rounded-md bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50"
         >
           {{ latestSignalsLoading ? $t('trend_research.loading') : $t('trend_research.scan_latest_signals_btn') }}
@@ -377,9 +456,9 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import NavBar from '@/components/NavBar.vue'
-import { getTrendScoreConfig, getTrendResearchScan, getTrendResearchLatest, getTrendScanLatestSignals, getKlineData } from '@/api'
+import { getTrendScoreConfig, getTrendResearchScan, getTrendResearchLatest, getTrendScanLatestSignals, getKlineData, getBinanceWhitelistTopVolatility } from '@/api'
 
 const loading = ref(false)
 const latestSignalsLoading = ref(false)
@@ -440,9 +519,83 @@ const query = ref({
   tpMin: 1.0,
   tpMax: 9.0,
   atrLookback: 200,
+  useVolumeSyncKline: false,
+})
+watch(() => query.value.exchange, (ex) => {
+  if (ex !== 'binance') query.value.useVolumeSyncKline = false
 })
 const scoreConfig = ref(null)
 const configLoading = ref(false)
+
+/** 白名单内 24h 振幅 TopN（研究端） */
+const whitelistVolTopN = ref(30)
+const whitelistVolRows = ref([])
+const whitelistVolLoading = ref(false)
+const whitelistVolError = ref('')
+const whitelistVolFetched = ref(false)
+const whitelistVolCopyStatus = ref('')
+const whitelistVolCopyError = ref(false)
+
+const fmtVolRange = (v) => {
+  const n = Number(v)
+  return Number.isFinite(n) ? n.toFixed(2) : '—'
+}
+const fmtChange = (v) => {
+  const n = Number(v)
+  return Number.isFinite(n) ? `${n >= 0 ? '+' : ''}${n.toFixed(3)}` : '—'
+}
+const numChangeClass = (v) => {
+  const n = Number(v)
+  if (!Number.isFinite(n)) return ''
+  return n >= 0 ? 'text-green-600' : 'text-red-600'
+}
+const fmtPx = (v) => {
+  const n = Number(v)
+  if (!Number.isFinite(n)) return '—'
+  const a = Math.abs(n)
+  if (a >= 1000) return n.toFixed(2)
+  if (a >= 1) return n.toFixed(4)
+  return n.toFixed(6)
+}
+const fmtQuoteVol = (v) => {
+  const n = Number(v)
+  if (!Number.isFinite(n)) return '—'
+  if (n >= 1e8) return `${(n / 1e8).toFixed(2)} 亿`
+  if (n >= 1e4) return `${(n / 1e4).toFixed(2)} 万`
+  return n.toFixed(0)
+}
+
+const loadWhitelistTopVolatility = async () => {
+  whitelistVolLoading.value = true
+  whitelistVolError.value = ''
+  whitelistVolCopyStatus.value = ''
+  try {
+    const n = Math.max(1, Math.min(150, Number(whitelistVolTopN.value) || 30))
+    whitelistVolTopN.value = n
+    const data = await getBinanceWhitelistTopVolatility(n)
+    whitelistVolRows.value = Array.isArray(data) ? data : []
+    whitelistVolFetched.value = true
+  } catch (e) {
+    whitelistVolRows.value = []
+    whitelistVolError.value = e?.message || String(e)
+    whitelistVolFetched.value = true
+  } finally {
+    whitelistVolLoading.value = false
+  }
+}
+
+const copyWhitelistVolSymbols = async () => {
+  try {
+    const text = whitelistVolRows.value.map((r) => r.symbol).filter(Boolean).join(',')
+    await navigator.clipboard.writeText(text)
+    whitelistVolCopyStatus.value = '已复制'
+    whitelistVolCopyError.value = false
+    setTimeout(() => { whitelistVolCopyStatus.value = '' }, 2000)
+  } catch (e) {
+    whitelistVolCopyStatus.value = e?.message || '复制失败'
+    whitelistVolCopyError.value = true
+  }
+}
 
 const coinTypeOptions = [
   { label: 'ALL', value: '' },
@@ -537,6 +690,7 @@ const runFullScan = async () => {
       delete params.tpMax
       delete params.atrLookback
     }
+    if (query.value.useVolumeSyncKline) params.useVolumeSyncKline = true
     const data = await getTrendResearchScan(params)
     signals.value = Array.isArray(data?.signals) ? data.signals : []
     sectors.value = Array.isArray(data?.sectors) ? data.sectors : []
@@ -557,6 +711,7 @@ const loadLatestSnapshot = async () => {
       exchange: query.value.exchange,
       timeframe: query.value.timeframe,
       tpPct: query.value.tpPct,
+      ...(query.value.useVolumeSyncKline ? { useVolumeSyncKline: true } : {}),
     })
     signals.value = Array.isArray(data?.signals) ? data.signals : []
     sectors.value = Array.isArray(data?.sectors) ? data.sectors : []
@@ -587,6 +742,10 @@ function intervalMsForTimeframe(tf) {
 }
 
 const runScanLatestSignals = async () => {
+  if (query.value.useVolumeSyncKline) {
+    error.value = '成交量节拍 K 线非等周期，不支持「最新行情信号扫描」；请关闭「成交量节拍 K 线」后重试。'
+    return
+  }
   latestSignalsLoading.value = true
   error.value = ''
   try {

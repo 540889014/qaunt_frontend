@@ -168,6 +168,16 @@
       <!-- Performance by Symbol Section -->
       <section>
         <h2 class="text-xl font-semibold text-gray-900 dark:text-white">{{ t('backtest_report.by_symbol_title') }}</h2>
+        <div class="mt-2 flex items-center gap-2 text-sm">
+          <label class="text-gray-600 dark:text-gray-300">排序：</label>
+          <select
+            v-model="symbolPerfSortDir"
+            class="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+          >
+            <option value="desc">净已实现盈亏（高 → 低）</option>
+            <option value="asc">净已实现盈亏（低 → 高）</option>
+          </select>
+        </div>
         <div class="mt-4 flow-root">
             <div class="-mx-4 -my-2 overflow-x-auto sm:-mx-6 lg:-mx-8">
                 <div class="inline-block min-w-full py-2 align-middle sm:px-6 lg:px-8">
@@ -180,7 +190,17 @@
                             </thead>
                             <tbody class="divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-900">
                                 <tr v-for="perf in symbolPerformance" :key="perf.symbol" class="hover:bg-gray-50 dark:hover:bg-gray-800">
-                                    <td v-for="header in symbolPerformanceHeaders" :key="header" class="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-300">{{ formatValue(perf[header], header) }}</td>
+                                    <td v-for="header in symbolPerformanceHeaders" :key="header" class="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-300">
+                                      <button
+                                        v-if="header === 'symbol'"
+                                        type="button"
+                                        class="font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+                                        @click="openSymbolPnlModal(String(perf.symbol || ''))"
+                                      >
+                                        {{ formatValue(perf[header], header) }}
+                                      </button>
+                                      <span v-else>{{ formatValue(perf[header], header) }}</span>
+                                    </td>
                                 </tr>
                             </tbody>
                         </table>
@@ -360,6 +380,7 @@
                     <tr>
                       <th class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-gray-200">{{ t('backtest_report.open_positions_headers.symbol') }}</th>
                       <th class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-gray-200">{{ t('backtest_report.open_positions_headers.side') }}</th>
+                      <th class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-gray-200">{{ t('backtest_report.open_positions_headers.notional_usdt') }}</th>
                       <th class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-gray-200">{{ t('backtest_report.open_positions_headers.quantity') }}</th>
                       <th class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-gray-200">{{ t('backtest_report.open_positions_headers.avg_entry') }}</th>
                       <th class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-gray-200">{{ t('backtest_report.open_positions_headers.mark') }}</th>
@@ -374,6 +395,7 @@
                     <tr v-for="(p, idx) in openPositions" :key="idx" class="hover:bg-gray-50 dark:hover:bg-gray-800">
                       <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-700 dark:text-gray-200">{{ p.symbol }}</td>
                       <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-700 dark:text-gray-200">{{ formatPosSide(p.side) }}</td>
+                      <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-300">{{ formatOpenNotionalUsdt(p) }}</td>
                       <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-300">{{ formatNum(p.quantity) }}</td>
                       <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-300">{{ formatNum(p.avg_entry) }}</td>
                       <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-300">{{ formatNum(p.mark) }}</td>
@@ -396,6 +418,34 @@
       <!-- Orders Table Section -->
       <section>
         <h2 class="text-xl font-semibold text-gray-900 dark:text-white">{{ t('backtest_report.orders_title') }}</h2>
+        <div class="mt-3 flex flex-wrap items-end gap-3">
+          <div>
+            <label class="block text-xs text-gray-600 dark:text-gray-300 mb-1">{{ t('backtest_report.order_filter_start') }}</label>
+            <input
+              v-model="orderFilterStart"
+              type="datetime-local"
+              class="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+            />
+          </div>
+          <div>
+            <label class="block text-xs text-gray-600 dark:text-gray-300 mb-1">{{ t('backtest_report.order_filter_end') }}</label>
+            <input
+              v-model="orderFilterEnd"
+              type="datetime-local"
+              class="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+            />
+          </div>
+          <button
+            @click="clearOrderTimeFilter"
+            type="button"
+            class="px-3 py-1.5 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700"
+          >
+            {{ t('backtest_report.order_filter_clear') }}
+          </button>
+          <div class="text-xs text-gray-500 dark:text-gray-400">
+            {{ t('backtest_report.order_filter_count', { shown: Math.min(ordersToShow, filteredOrders.length), total: filteredOrders.length }) }}
+          </div>
+        </div>
         <div class="mt-4 flow-root">
           <div class="-mx-4 -my-2 overflow-x-auto sm:-mx-6 lg:-mx-8">
             <div class="inline-block min-w-full py-2 align-middle sm:px-6 lg:px-8">
@@ -409,16 +459,18 @@
                   <tbody class="divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-900">
                     <tr v-for="order in paginatedOrders" :key="order.id" class="hover:bg-gray-50 dark:hover:bg-gray-800">
                       <td v-for="header in orderTableHeaders" :key="header.key" class="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-300">
-                        <span v-if="header.key === 'openclose'">{{ formatOpenClose(order[header.key]) }}</span>
+                        <span v-if="header.key === 'openclose'">{{ formatOpenClose(order[header.key], order.order_side) }}</span>
+                        <span v-else-if="header.key === 'time'">{{ formatOrderTime(order[header.key]) }}</span>
+                        <span v-else-if="header.key === 'abo'">{{ formatAbo(order[header.key]) }}</span>
                         <span v-else>{{ order[header.key] }}</span>
                       </td>
                     </tr>
                   </tbody>
                 </table>
               </div>
-              <div v-if="reportData.orders.length > ordersToShow" class="mt-4 text-center">
+              <div v-if="filteredOrders.length > ordersToShow" class="mt-4 text-center">
                   <button @click="showMoreOrders" class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-900 dark:hover:text-indigo-200">
-                    {{ t('backtest_report.show_more') }} ({{ ordersToShow }} / {{ reportData.orders.length }})
+                    {{ t('backtest_report.show_more') }} ({{ Math.min(ordersToShow, filteredOrders.length) }} / {{ filteredOrders.length }})
                   </button>
               </div>
             </div>
@@ -498,6 +550,40 @@
 
     </div>
 
+    <!-- Symbol PnL Curve Modal -->
+    <div
+      v-if="showSymbolPnlModal"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      @click.self="closeSymbolPnlModal"
+    >
+      <div class="w-full max-w-5xl rounded-lg bg-white dark:bg-gray-900 shadow-xl border border-gray-200 dark:border-gray-700">
+        <div class="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+          <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+            {{ selectedSymbolForPnlCurve }} 盈利曲线（累计已实现盈亏）
+          </h3>
+          <button
+            type="button"
+            class="rounded px-2 py-1 text-sm text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+            @click="closeSymbolPnlModal"
+          >
+            关闭
+          </button>
+        </div>
+        <div class="p-4">
+          <VueApexCharts
+            v-if="symbolPnlCurveSeries[0].data.length"
+            type="line"
+            height="360"
+            :options="symbolPnlCurveOptions"
+            :series="symbolPnlCurveSeries"
+          />
+          <div v-else class="py-12 text-center text-sm text-gray-500 dark:text-gray-400">
+            该合约暂无可绘制的成交盈亏数据。
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div>
 </template>
 
@@ -517,6 +603,7 @@ const MAX_ORDERS_RENDER = 5000
 const MAX_TRADES_RENDER = 5000
 const MAX_SPREAD_EVENTS_RENDER = 8000
 const MAX_INDICATOR_POINTS_RENDER = 8000
+const REPORT_TIME_ZONE = 'Asia/Tokyo'
 
 const sampleEvenly = (arr, maxPoints) => {
   if (!Array.isArray(arr)) return []
@@ -542,22 +629,39 @@ const props = defineProps({
   }
 })
 
-const pad2 = (n) => String(n).padStart(2, '0')
-
-const formatDateNumeric = (ts) => {
+const formatDateInReportTimeZone = (ts, withTime = true, withSeconds = true) => {
   const t = typeof ts === 'number' ? ts : Number(ts)
   if (!Number.isFinite(t)) return ''
   const d = new Date(t)
   if (!Number.isFinite(d.getTime())) return ''
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: REPORT_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: withTime ? '2-digit' : undefined,
+    minute: withTime ? '2-digit' : undefined,
+    second: withTime && withSeconds ? '2-digit' : undefined,
+    hour12: false,
+  }).formatToParts(d)
+  const pick = (type) => parts.find(p => p.type === type)?.value || ''
+  const y = pick('year')
+  const m = pick('month')
+  const day = pick('day')
+  if (!withTime) return `${y}-${m}-${day}`
+  const hh = pick('hour')
+  const mm = pick('minute')
+  if (!withSeconds) return `${y}-${m}-${day} ${hh}:${mm}`
+  const ss = pick('second')
+  return `${y}-${m}-${day} ${hh}:${mm}:${ss}`
+}
+
+const formatDateNumeric = (ts) => {
+  return formatDateInReportTimeZone(ts, false, false)
 }
 
 const formatDateTimeNumeric = (ts) => {
-  const t = typeof ts === 'number' ? ts : Number(ts)
-  if (!Number.isFinite(t)) return ''
-  const d = new Date(t)
-  if (!Number.isFinite(d.getTime())) return ''
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`
+  return formatDateInReportTimeZone(ts, true, false)
 }
 
 const timestamps = ref([])
@@ -570,6 +674,7 @@ const error = ref(null)
 const viewMode = ref('list')
 const reportListSortBy = ref('time') // time | return
 const reportListSortDir = ref('desc') // asc | desc
+const symbolPerfSortDir = ref('desc') // desc | asc
 
 // Get instanceId from props or route
 const instanceId = computed(() => props.instanceId || route.params.instanceId)
@@ -577,6 +682,10 @@ const strategyName = computed(() => props.strategyName || route.params.strategyN
 
 const ordersToShow = ref(20)
 const tradesToShow = ref(20)
+const orderFilterStart = ref('')
+const orderFilterEnd = ref('')
+const showSymbolPnlModal = ref(false)
+const selectedSymbolForPnlCurve = ref('')
 
 // --- Kline chart (within backtest range) ---
 const selectedKlineSymbol = ref('')
@@ -776,7 +885,9 @@ const klineOptions = computed(() => ({
   },
   tooltip: {
     enabled: true,
-    x: { format: 'yyyy-MM-dd HH:mm:ss' },
+    x: {
+      formatter: (v, ctx) => formatDateInReportTimeZone(ctx?.series?.[ctx.seriesIndex]?.[ctx.dataPointIndex]?.x ?? v, true, true),
+    },
   },
   noData: {
     text: t('backtest_report.kline_error_no_data'),
@@ -806,7 +917,9 @@ const spreadOptions = computed(() => ({
     },
   },
   tooltip: {
-    x: { format: 'yyyy-MM-dd HH:mm:ss' },
+    x: {
+      formatter: (v, ctx) => formatDateInReportTimeZone(ctx?.series?.[ctx.seriesIndex]?.[ctx.dataPointIndex]?.x ?? v, true, true),
+    },
     y: {
       formatter: (v) => (typeof v === 'number' && Number.isFinite(v) ? v.toFixed(6) : v),
     },
@@ -849,31 +962,53 @@ const strategyIndicatorOptions = computed(() => ({
     },
   ],
   tooltip: {
-    x: { format: 'yyyy-MM-dd HH:mm:ss' },
+    x: {
+      formatter: (v, ctx) => formatDateInReportTimeZone(ctx?.series?.[ctx.seriesIndex]?.[ctx.dataPointIndex]?.x ?? v, true, true),
+    },
   },
   noData: { text: 'No indicator data.' },
 }))
 
 const orderTableHeaders = computed(() => {
-    const keys = ['time', 'symbol', 'order_side', 'order_type', 'price', 'qty', 'openclose', 'order_id'];
+    const keys = ['time', 'symbol', 'order_side', 'order_type', 'price', 'qty', 'abo', 'openclose', 'order_id'];
     return keys.map(key => ({
         key,
         label: t(`backtest_report.order_headers.${key}`)
     }));
 });
 
-const formatOpenClose = (v) => {
-  const s = (v ?? '').toString().trim().toUpperCase()
-  if (!s) return ''
+const formatAbo = (v) => {
+  const n = Number(v)
+  if (!Number.isFinite(n)) return '-'
+  return n.toFixed(6)
+}
+
+/**
+ * OPEN/CLOSE 与方向组合：避免把「平空」(BUY+CLOSE) 误解成「没开仓就平仓」。
+ * BUY+CLOSE = 买入平空；SELL+CLOSE = 卖出平多。
+ */
+const formatOpenClose = (v, orderSide) => {
+  const oc = (v ?? '').toString().trim().toUpperCase()
+  const side = (orderSide ?? '').toString().trim().toUpperCase()
+  if (!oc) return ''
+  const isBuy = side === 'BUY'
+  if (oc === 'OPEN') {
+    return t(isBuy ? 'backtest_report.openclose_values.open_long' : 'backtest_report.openclose_values.open_short')
+  }
+  if (oc === 'CLOSE') {
+    return t(isBuy ? 'backtest_report.openclose_values.close_short' : 'backtest_report.openclose_values.close_long')
+  }
+  if (oc === 'ADD') {
+    return t(isBuy ? 'backtest_report.openclose_values.add_long' : 'backtest_report.openclose_values.add_short')
+  }
+  if (oc === 'REDUCE') {
+    return t(isBuy ? 'backtest_report.openclose_values.reduce_short' : 'backtest_report.openclose_values.reduce_long')
+  }
   const mapKey = {
-    OPEN: 'open',
-    CLOSE: 'close',
-    ADD: 'add',
-    REDUCE: 'reduce',
     FLIP: 'flip',
     HOLD: 'hold',
-  }[s]
-  return mapKey ? t(`backtest_report.openclose_values.${mapKey}`) : s
+  }[oc]
+  return mapKey ? t(`backtest_report.openclose_values.${mapKey}`) : oc
 }
 
 const tradeTableHeaders = computed(() => {
@@ -894,10 +1029,7 @@ const periodicPerformanceHeaders = computed(() => {
 
 
 const paginatedOrders = computed(() => {
-  if (!reportData.value || !reportData.value.orders) {
-    return []
-  }
-  return reportData.value.orders.slice(0, ordersToShow.value)
+  return filteredOrders.value.slice(0, ordersToShow.value)
 })
 
 const paginatedTrades = computed(() => {
@@ -909,6 +1041,32 @@ const paginatedTrades = computed(() => {
 
 const showMoreOrders = () => {
   ordersToShow.value += 20;
+}
+
+const datetimeLocalToMs = (v) => {
+  if (!v) return null
+  const t = Date.parse(v)
+  return Number.isFinite(t) ? t : null
+}
+
+const filteredOrders = computed(() => {
+  const orders = reportData.value?.orders
+  if (!Array.isArray(orders) || !orders.length) return []
+  const startMs = datetimeLocalToMs(orderFilterStart.value)
+  const endMs = datetimeLocalToMs(orderFilterEnd.value)
+  if (startMs == null && endMs == null) return orders
+  return orders.filter((o) => {
+    const ts = parseEventTs(o?.time)
+    if (!Number.isFinite(ts)) return false
+    if (startMs != null && ts < startMs) return false
+    if (endMs != null && ts > endMs) return false
+    return true
+  })
+})
+
+const clearOrderTimeFilter = () => {
+  orderFilterStart.value = ''
+  orderFilterEnd.value = ''
 }
 
 const showMoreTrades = () => {
@@ -1002,6 +1160,7 @@ const loadReportData = async () => {
     viewMode.value = 'detail'
     ordersToShow.value = 20 // Reset on new data load
     tradesToShow.value = 20 // Reset on new data load
+    clearOrderTimeFilter()
     await nextTick()
     await autoLoadKlineIfReady()
 
@@ -1038,6 +1197,7 @@ const loadReportDataByInstanceId = async (instanceIdParam, timestampParam = null
     viewMode.value = 'detail'
     ordersToShow.value = 20 // Reset on new data load
     tradesToShow.value = 20 // Reset on new data load
+    clearOrderTimeFilter()
     await nextTick()
     await autoLoadKlineIfReady()
     
@@ -1051,6 +1211,10 @@ const loadReportDataByInstanceId = async (instanceIdParam, timestampParam = null
     loading.value = false
   }
 }
+
+watch([orderFilterStart, orderFilterEnd], () => {
+  ordersToShow.value = 20
+})
 
 const reportListRows = computed(() => {
   let rows = []
@@ -1204,7 +1368,7 @@ const equityCurveOptions = computed(() => {
     },
     tooltip: {
       x: {
-        format: 'yyyy-MM-dd HH:mm:ss'
+        formatter: (v, ctx) => formatDateInReportTimeZone(ctx?.series?.[ctx.seriesIndex]?.[ctx.dataPointIndex]?.x ?? v, true, true),
       },
     },
     stroke: {
@@ -1277,7 +1441,7 @@ const dailyReturnsOptions = computed(() => ({
   },
   tooltip: {
     x: {
-      format: 'yyyy-MM-dd'
+      formatter: (v, ctx) => formatDateInReportTimeZone(ctx?.series?.[ctx.seriesIndex]?.[ctx.dataPointIndex]?.x ?? v, false, false),
     },
     y: {
       formatter: (value) => {
@@ -1297,10 +1461,26 @@ const formatNum = (v) => {
   return n.toFixed(4)
 }
 
+/** 期末持仓名义 USDT；低价币基础币数量会很大，名义应与 tradeSize 同量级 */
+const formatOpenNotionalUsdt = (p) => {
+  if (p == null) return 'N/A'
+  const raw = p.notional_usdt
+  if (raw != null && raw !== '') {
+    const n = parseFloat(raw)
+    if (Number.isFinite(n)) return `${n.toFixed(2)} USDT`
+  }
+  const q = parseFloat(p.quantity)
+  const mk = parseFloat(p.mark)
+  if (Number.isFinite(q) && Number.isFinite(mk) && mk > 0) {
+    return `${(Math.abs(q) * mk).toFixed(2)} USDT`
+  }
+  return 'N/A'
+}
+
 const formatTs = (ts) => {
   const n = parseInt(ts, 10)
   if (!Number.isFinite(n) || n <= 0) return 'N/A'
-  return new Date(n).toLocaleString()
+  return formatDateInReportTimeZone(n, true, true)
 }
 
 const formatDuration = (ms) => {
@@ -1324,11 +1504,14 @@ const formatPosSide = (side) => {
 }
 
 const formatValue = (value, key = '') => {
-  if (value === null || value === undefined || (typeof value === 'string' && value.trim() === '')) {
+  if (value === null || value === undefined) {
     return 'N/A';
   }
+  if (typeof value === 'string' && value.trim() === '') {
+    return '—';
+  }
 
-  const rateKeys = ['total_pnl_rate', 'win_rate', 'annualized_return_rate', 'maximum_drawdown_rate', 'trade_success_rate'];
+  const rateKeys = ['total_pnl_rate', 'contribution_vs_initial', 'win_rate', 'annualized_return_rate', 'maximum_drawdown_rate', 'trade_success_rate'];
   const num = parseFloat(value);
 
   if (isNaN(num)) {
@@ -1373,6 +1556,10 @@ const formatKey = (key) => {
     // Chinese key mappings for common fields
     const chineseMap = {
       'symbol': '交易对',
+      'net_realized_pnl': '净已实现盈亏',
+      'gross_realized_pnl': '毛已实现(还原手续费)',
+      'fill_count': '成交笔数',
+      'contribution_vs_initial': '占初始资金比例',
       'total_pnl_rate': '总盈亏率',
       'annualized_return_rate': '年化收益率',
       'sharpe_ratio': '夏普比率',
@@ -1428,8 +1615,89 @@ const symbolPerformance = computed(() => {
     if (!reportData.value || !Array.isArray(reportData.value.performance)) {
         return [];
     }
-    return reportData.value.performance.filter(p => p.symbol !== 'Total');
+    const rows = reportData.value.performance.filter(p => p.symbol !== 'Total');
+    const dir = symbolPerfSortDir.value === 'asc' ? 1 : -1;
+    const toNum = (v) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : 0;
+    };
+    return [...rows].sort((a, b) => {
+      const da = toNum(a?.net_realized_pnl);
+      const db = toNum(b?.net_realized_pnl);
+      if (da !== db) return (da - db) * dir;
+      return String(a?.symbol || '').localeCompare(String(b?.symbol || ''));
+    });
 });
+
+const symbolPnlCurvePoints = computed(() => {
+  const sym = String(selectedSymbolForPnlCurve.value || '').trim()
+  if (!sym) return []
+  const orders = reportData.value?.orders
+  if (!Array.isArray(orders) || !orders.length) return []
+  const rows = orders
+    .map((o) => ({
+      ts: parseEventTs(o?.time),
+      symbol: String(o?.symbol || ''),
+      realized: Number(o?.realized_pnl),
+    }))
+    .filter((r) => r.symbol === sym && Number.isFinite(r.ts) && Number.isFinite(r.realized))
+    .sort((a, b) => a.ts - b.ts)
+  if (!rows.length) return []
+  let acc = 0
+  return rows.map((r) => {
+    acc += r.realized
+    return [r.ts, Number(acc.toFixed(8))]
+  })
+})
+
+const symbolPnlCurveSeries = computed(() => ([
+  {
+    name: '累计已实现盈亏(USDT)',
+    data: symbolPnlCurvePoints.value,
+  },
+]))
+
+const symbolPnlCurveOptions = computed(() => ({
+  chart: {
+    type: 'line',
+    toolbar: { show: true },
+    zoom: { enabled: true, type: 'x', autoScaleYaxis: true },
+    animations: { enabled: false },
+  },
+  stroke: { width: 2, curve: 'smooth' },
+  xaxis: {
+    type: 'datetime',
+    labels: {
+      datetimeUTC: false,
+      formatter: (_, timestamp) => formatDateTimeNumeric(timestamp),
+    },
+  },
+  yaxis: {
+    labels: {
+      formatter: (v) => (typeof v === 'number' && Number.isFinite(v) ? v.toFixed(4) : v),
+    },
+  },
+  tooltip: {
+    x: {
+      formatter: (v, ctx) => formatDateInReportTimeZone(ctx?.series?.[ctx.seriesIndex]?.[ctx.dataPointIndex]?.x ?? v, true, true),
+    },
+    y: {
+      formatter: (v) => (typeof v === 'number' && Number.isFinite(v) ? `${v.toFixed(4)} USDT` : v),
+    },
+  },
+  noData: { text: 'No symbol pnl data.' },
+}))
+
+const openSymbolPnlModal = (symbol) => {
+  const s = String(symbol || '').trim()
+  if (!s) return
+  selectedSymbolForPnlCurve.value = s
+  showSymbolPnlModal.value = true
+}
+
+const closeSymbolPnlModal = () => {
+  showSymbolPnlModal.value = false
+}
 
 const backtestTimeRange = computed(() => {
   const rows = reportData.value?.portfolioDetails || []
@@ -1444,7 +1712,7 @@ const backtestTimeRange = computed(() => {
 const backtestTimeRangeText = computed(() => {
   if (!backtestTimeRange.value) return ''
   const { start, end } = backtestTimeRange.value
-  return `${new Date(start).toLocaleString()} ~ ${new Date(end).toLocaleString()}`
+  return `${formatDateInReportTimeZone(start, true, true)} ~ ${formatDateInReportTimeZone(end, true, true)}`
 })
 
 const loadKline = async () => {
@@ -1689,10 +1957,17 @@ const formatTimestamp = (ts) => {
   }
   // Handle numeric timestamp (Unix timestamp in milliseconds)
   if (typeof ts === 'number' || (typeof ts === 'string' && /^\d+$/.test(ts) && ts.length > 14)) {
-    const date = new Date(parseInt(ts))
-    return date.toLocaleString()
+    return formatDateInReportTimeZone(parseInt(ts, 10), true, true)
   }
   return ts
+}
+
+const formatOrderTime = (raw) => {
+  const ts = parseEventTs(raw)
+  if (Number.isFinite(ts)) {
+    return formatDateInReportTimeZone(ts, true, true)
+  }
+  return raw ?? ''
 }
 
 // Helper function for debugging data range

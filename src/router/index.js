@@ -12,10 +12,25 @@ import StrategyTemplateForm from '@/views/StrategyTemplateForm.vue'
 import BacktestInstanceList from '@/views/BacktestInstanceList.vue'
 import BacktestInstanceForm from '@/views/BacktestInstanceForm.vue'
 import PairsScanner from '@/views/PairsScanner.vue'
+import EulerGoldenPairs from '@/views/EulerGoldenPairs.vue'
 import DataConverter from '@/views/DataConverter.vue'
 import TrendResearchLab from '@/views/TrendResearchLab.vue'
 import TrendValidationReport from '@/views/TrendValidationReport.vue'
+import PairsValidationReport from '@/views/PairsValidationReport.vue'
 import KlineSyncToLive from '@/views/KlineSyncToLive.vue'
+import BinanceHistoryDownload from '@/views/BinanceHistoryDownload.vue'
+import BinanceVisionTradesDownload from '@/views/BinanceVisionTradesDownload.vue'
+import BtcVolumeSyncKline from '@/views/BtcVolumeSyncKline.vue'
+import BtcPointBrickKline from '@/views/BtcPointBrickKline.vue'
+import BtcPointBrickKlineFreeBenchmark from '@/views/BtcPointBrickKlineFreeBenchmark.vue'
+import EulerOiBrickBenchmark from '@/views/EulerOiBrickBenchmark.vue'
+import EulerOiBrickBenchmarkStrategyOptimize from '@/views/EulerOiBrickBenchmarkStrategyOptimize.vue'
+import EulerOiVolumeBrickBenchmarkStrategyOptimize from '@/views/EulerOiVolumeBrickBenchmarkStrategyOptimize.vue'
+import SpreadSyntheticKline from '@/views/SpreadSyntheticKline.vue'
+import BinanceJbarKline from '@/views/BinanceJbarKline.vue'
+import BinanceTopVolume from '@/views/BinanceTopVolume.vue'
+import BinanceAboDynamicWhitelist from '@/views/BinanceAboDynamicWhitelist.vue'
+import AltClockBrickKline from '@/views/AltClockBrickKline.vue'
 import { useAuthStore } from '../stores/auth'
 
 const routes = [
@@ -72,6 +87,12 @@ const routes = [
     meta: { requiresAuth: true, title: 'Pairs Scanner' }
   },
   {
+    path: '/euler-golden-pairs',
+    name: 'EulerGoldenPairs',
+    component: EulerGoldenPairs,
+    meta: { requiresAuth: true, title: 'Euler Golden Pairs' }
+  },
+  {
     path: '/data-converter',
     name: 'DataConverter',
     component: DataConverter,
@@ -84,6 +105,18 @@ const routes = [
     meta: { requiresAuth: true, title: 'K线同步到实盘' }
   },
   {
+    path: '/binance-history-download',
+    name: 'BinanceHistoryDownload',
+    component: BinanceHistoryDownload,
+    meta: { requiresAuth: true, title: '币安历史K线' }
+  },
+  {
+    path: '/binance-vision-trades',
+    name: 'BinanceVisionTradesDownload',
+    component: BinanceVisionTradesDownload,
+    meta: { requiresAuth: true, title: '币安月度成交 Trades' }
+  },
+  {
     path: '/trend-research',
     name: 'TrendResearchLab',
     component: TrendResearchLab,
@@ -94,6 +127,84 @@ const routes = [
     name: 'TrendValidationReport',
     component: TrendValidationReport,
     meta: { requiresAuth: true, title: 'Trend Validation Report' }
+  },
+  {
+    path: '/pairs-validation-report',
+    name: 'PairsValidationReport',
+    component: PairsValidationReport,
+    meta: { requiresAuth: true, title: 'Pairs Validation Report' }
+  },
+  {
+    path: '/volume-sync-kline',
+    name: 'BtcVolumeSyncKline',
+    component: BtcVolumeSyncKline,
+    meta: { requiresAuth: true, title: 'Volume Sync Kline' }
+  },
+  {
+    path: '/btc-point-brick-kline',
+    name: 'BtcPointBrickKline',
+    component: BtcPointBrickKline,
+    meta: { requiresAuth: true, title: 'BTC Point Brick Kline' }
+  },
+  {
+    path: '/btc-point-brick-kline-free-benchmark',
+    name: 'BtcPointBrickKlineFreeBenchmark',
+    component: BtcPointBrickKlineFreeBenchmark,
+    meta: { requiresAuth: true, title: '币安砖石K线（自由ABO基准）' }
+  },
+  {
+    path: '/euler-oi-brick-benchmark',
+    name: 'EulerOiBrickBenchmark',
+    component: EulerOiBrickBenchmark,
+    meta: { requiresAuth: true, title: '单边欧拉·OI加权（点砖+metrics）' }
+  },
+  {
+    path: '/euler-oi-brick-benchmark-strategy-optimize',
+    name: 'EulerOiBrickBenchmarkStrategyOptimize',
+    component: EulerOiBrickBenchmarkStrategyOptimize,
+    meta: { requiresAuth: true, title: '（策略优化）单边欧拉·OI加权（点砖+metrics）' }
+  },
+  {
+    path: '/euler-oi-volume-brick-benchmark-strategy-optimize',
+    name: 'EulerOiVolumeBrickBenchmarkStrategyOptimize',
+    component: EulerOiVolumeBrickBenchmarkStrategyOptimize,
+    meta: { requiresAuth: true, title: '（策略优化）单边欧拉·OI加权（成交额砖+metrics）' }
+  },
+  {
+    path: '/spread-synthetic-kline',
+    name: 'SpreadSyntheticKline',
+    component: SpreadSyntheticKline,
+    meta: { requiresAuth: true, title: 'Spread Synthetic Kline' }
+  },
+  {
+    path: '/binance-jbar-kline',
+    name: 'BinanceJbarKline',
+    component: BinanceJbarKline,
+    meta: { requiresAuth: true, title: 'Binance Jbar Kline' }
+  },
+  {
+    path: '/binance-jbar-kline-free-benchmark',
+    name: 'BinanceJbarKlineFreeBenchmark',
+    component: BinanceJbarKline,
+    meta: { requiresAuth: true, title: '币安常规K线（自由ABO基准）' }
+  },
+  {
+    path: '/binance-top-volume',
+    name: 'BinanceTopVolume',
+    component: BinanceTopVolume,
+    meta: { requiresAuth: true, title: '币安U本位永续成交量Top100' }
+  },
+  {
+    path: '/binance-abo-whitelist',
+    name: 'BinanceAboDynamicWhitelist',
+    component: BinanceAboDynamicWhitelist,
+    meta: { requiresAuth: true, title: '币安ABO动态白名单' }
+  },
+  {
+    path: '/alt-clock-brick-kline',
+    name: 'AltClockBrickKline',
+    component: AltClockBrickKline,
+    meta: { requiresAuth: true, title: '山寨驱动砖石K线' }
   },
   {
     path: '/backtest',

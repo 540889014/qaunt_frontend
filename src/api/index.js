@@ -6,7 +6,7 @@ import i18n from '@/i18n'
 // 默认用相对路径 /api，局域网访问时请求会发往当前页面域名，由 Vite 代理转发到后端
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '',
-  timeout: 100000,
+  timeout: 1_000_000, // ~16.7min；验证历史/网格等长任务易超 100s
   headers: {
     'Content-Type': 'application/json'
   }
@@ -15,7 +15,7 @@ const api = axios.create({
 // Agent API（单独模块）；默认相对路径 /api 由 Vite 代理，局域网可访问
 const agentApi = axios.create({
   baseURL: import.meta.env.VITE_AGENT_API_BASE_URL || '',
-  timeout: 120000,
+  timeout: 1_200_000,
   headers: {
     'Content-Type': 'application/json'
   }
@@ -152,6 +152,15 @@ export const getRealtimeData = (symbol, exchange = 'okx') =>
 export const getDepthData = (symbol, exchange = 'okx') =>
   api.get('/api/v1/market/depth', { params: { symbol, exchange } })
 export const getAllForexMetadata = () => api.get('/api/forex/metadata/all')
+export const getBinanceTopVolumeContracts = () => api.get('/api/v1/market/binance/top-volume')
+
+/** 本地 .jbar：UTC 自然日累计 USDT 成交额 Top N。params: { date: 'yyyy-MM-dd', interval?: '1h', limit?: 150 } */
+export const getBinanceHistoryDayTopVolume = (params) =>
+  api.get('/api/v1/market/binance/history-day-top-volume', { params })
+
+/** 流动性白名单（Top150）内按 24h 振幅排序，取波动最大的前 N 个（研究端） */
+export const getBinanceWhitelistTopVolatility = (limit = 30) =>
+  api.get('/api/v1/market/binance/whitelist-top-volatility', { params: { limit } })
 
 // ========== 公共市场数据 ==========
 export const getInstruments = (instType) =>
@@ -175,6 +184,50 @@ export const fetchHistoryCandles = (params) =>
 /** 研究端 K 线比对：数据库 kline_data vs 二进制 .jbar（最近 200 条）。params: { symbol, timeframe?, exchange? } */
 export const compareKlineJbarDb = (params) =>
   api.get('/api/v1/kline/compare-jbar-db', { params });
+
+/** 币安 U 本位永续合约列表（TRADING） */
+export const fetchBinanceHistorySymbols = () => api.get('/api/v1/binance/history/symbols')
+
+/** 启动月度 K 线 ZIP → .jbar 任务。body: { startMonth, endMonth, intervals[], allPerpetual?, symbols? } */
+export const startBinanceHistoryDownload = (body) =>
+  api.post('/api/v1/binance/history/download', body)
+
+/** UM 5m metrics：Vision 仅 daily/metrics（按日 ZIP，无 monthly）→ {SYMBOL}_5m_metrics.jbar。body: { startDate, endDate, allPerpetual?, symbols?, mergeExisting? } */
+export const startBinanceVisionMetricsDownload = (body) =>
+  api.post('/api/v1/binance/history/metrics-download', body)
+
+export const getBinanceHistoryJob = (jobId) =>
+  api.get(`/api/v1/binance/history/jobs/${jobId}`)
+
+/** 白名单 UM 月度 trades → .jtrade（data.binance.vision）body: { startMonth, endMonth, mergeExisting? } */
+export const startBinanceVisionTradesDownload = (body) =>
+  api.post('/api/v1/binance/vision-trades/download', body)
+export const getBinanceVisionTradesJob = (jobId) =>
+  api.get(`/api/v1/binance/vision-trades/jobs/${jobId}`)
+
+/** 从 data/history/binance .jbar 读区间 K 线。params: symbol, interval, startMs, endMs, limit? */
+export const fetchBinanceHistoryKlineBars = (params) =>
+  api.get('/api/v1/binance/history/kline-bars', { params })
+
+/** 构建 BTC 成交量节拍（volume-sync）合成 K 线。body: VolumeSyncBuildRequestDto */
+export const buildBtcVolumeSyncKline = (body) =>
+  api.post('/api/v1/binance/volume-sync/build', body)
+
+/** 读取 volume-sync 合成 K 线（BTCVOLSYNC）。params: { symbol, startMs, endMs, limit? } */
+export const fetchBtcVolumeSyncKlineBars = (params) =>
+  api.get('/api/v1/binance/volume-sync/kline-bars', { params })
+
+/** 构建 BTC 点砖（砖石）对齐 K 线。body: PointBrickBuildRequestDto（brickMovePercent=百分数，如 1 表示 1%） */
+export const buildBtcPointBrickKline = (body) =>
+  api.post('/api/v1/binance/btc-point-brick/build', body)
+
+/** 读取点砖合成 K 线（BTCPOINTBRICK）。params: { symbol, startMs, endMs, limit? } */
+export const fetchBtcPointBrickKlineBars = (params) =>
+  api.get('/api/v1/binance/btc-point-brick/kline-bars', { params })
+
+/** 山寨驱动时钟砖石 K 线：按 clockSymbol 达阈值时切砖，并同步生成 target + BTC 参考 */
+export const fetchAltClockBrickKlineBars = (params) =>
+  api.get('/api/v1/binance/alt-clock-brick/kline-bars', { params })
 
 // --- Strategy Templates API ---
 
@@ -239,6 +292,11 @@ export const getPairsScanRuns = (timeframe, limit = 20) => {
 export const getPairsScanRunResults = (runId, limit = 200) => {
   return api.get(`/api/v1/pairs-scanner/runs/${runId}/results`, { params: { limit } });
 };
+
+// --- Euler golden pairs (main → BTC/ETH/SOL/BNB, σ-ranked) ---
+export const getEulerGoldenPairs = () => api.get('/api/v1/euler-golden-pairs');
+export const runEulerGoldenPairScan = (payload) =>
+  api.post('/api/v1/euler-golden-pairs/run', payload == null ? {} : payload);
 
 // --- Data Converter API ---
 export const convertKlineData = (payload) => api.post('/api/v1/data-converter/kline', payload);
@@ -312,6 +370,10 @@ export const getTrendScanLatestSignals = (params) => api.get('/api/trend-researc
 export const getTrendSectorRadar = (params) => api.get('/api/trend-research/sector-radar', { params });
 export const getTrendRelativeStrength = (params) => api.get('/api/trend-research/relative-strength', { params });
 export const getTrendRegime = (params) => api.get('/api/trend-research/regime', { params });
+
+// --- Pairs Research (价差套利验证) APIs ---
+/** 按时间区间重算配对验证历史（Z-Score 均值回归） */
+export const getPairsValidationHistory = (params) => api.get('/api/pairs-research/validation-history', { params });
 
 export default api 
 

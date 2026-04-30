@@ -35,6 +35,16 @@
             <option value="binance">Binance</option>
           </select>
         </div>
+        <div class="flex flex-col gap-2 pb-1 col-span-2 sm:col-span-1">
+          <div class="flex items-center gap-2">
+            <input id="use-vol-sync-report" v-model="query.useVolumeSyncKline" type="checkbox" class="rounded border-gray-300" :disabled="query.exchange !== 'binance'" />
+            <label for="use-vol-sync-report" class="text-sm text-gray-600 dark:text-gray-300">成交量节拍 K 线（BTCVOLSYNC，仅 Binance）</label>
+          </div>
+          <div class="flex items-center gap-2">
+            <input id="use-btc-point-brick-report" v-model="query.useBtcPointBrickKline" type="checkbox" class="rounded border-gray-300" :disabled="query.exchange !== 'binance'" />
+            <label for="use-btc-point-brick-report" class="text-sm text-gray-600 dark:text-gray-300">砖石图（BTCPOINTBRICK，仅 Binance；与成交量节拍二选一）</label>
+          </div>
+        </div>
         <div>
           <label class="block text-sm text-gray-600 dark:text-gray-300 mb-1">{{ $t('trend_research.timeframe') }}</label>
           <select v-model="query.timeframe" class="px-3 py-2 border rounded-md bg-white dark:bg-gray-800 w-full min-w-0">
@@ -42,6 +52,7 @@
             <option value="15m">15m</option>
             <option value="30m">30m</option>
             <option value="1H">1H</option>
+            <option value="2H">2H</option>
             <option value="4H">4H</option>
           </select>
         </div>
@@ -82,6 +93,9 @@
           <div>
             <label class="block text-sm text-gray-600 dark:text-gray-300">ATR 回看根数</label>
             <input v-model.number="query.atrLookback" type="number" min="20" max="2000" class="px-3 py-2 border rounded-md bg-white dark:bg-gray-800 w-28" placeholder="200" />
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 max-w-xs">
+              有效不超过训练段长度（约「回看K线数」）；过大时 ATR 区间不变。现按该窗口收盘价波动与 ATR 混合映射止盈，改 80/200/500 对比更明显。
+            </p>
           </div>
         </template>
         <div>
@@ -95,6 +109,30 @@
         <div>
           <label class="block text-sm text-gray-600 dark:text-gray-300">回看K线数</label>
           <input v-model.number="query.lookbackBars" type="number" min="120" max="20000" class="px-3 py-2 border rounded-md bg-white dark:bg-gray-800 w-32" />
+        </div>
+        <div>
+          <label class="block text-sm text-gray-600 dark:text-gray-300 mb-1">验证K线数</label>
+          <input
+            v-model.number="query.validationEvalBars"
+            type="number"
+            min="1"
+            max="48"
+            class="px-3 py-2 border rounded-md bg-white dark:bg-gray-800 w-24"
+            title="优化逻辑下用于算收益的前向K数，默认5；原始逻辑固定2根"
+          />
+        </div>
+        <div>
+          <label class="block text-sm text-gray-600 dark:text-gray-300 mb-1">止损(%)</label>
+          <input
+            v-model.number="query.stopLossPct"
+            type="number"
+            min="0"
+            max="50"
+            step="0.5"
+            class="px-3 py-2 border rounded-md bg-white dark:bg-gray-800 w-24"
+            placeholder="0=关闭"
+            title="按区间重算时：验证段内任一根K线收盘价亏损达到此点数即在该收盘价平仓；仅用收盘价判断"
+          />
         </div>
         <div>
           <label class="block text-sm text-gray-600 dark:text-gray-300">验证样本上限</label>
@@ -116,7 +154,11 @@
           <button @click="recalculateHistory" :disabled="loading" class="px-4 py-2 rounded-md bg-orange-600 text-white hover:bg-orange-700 disabled:opacity-50">
             {{ loading ? $t('trend_research.loading') : '重算历史(快照)' }}
           </button>
-          <button @click="recalculateHistoryByRange" :disabled="loading" class="px-4 py-2 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50">
+          <button
+            @click="recalculateHistoryByRange"
+            :disabled="loading"
+            class="px-4 py-2 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+          >
             {{ loading ? $t('trend_research.loading') : '按区间逐K重算(二进制)' }}
           </button>
         </div>
@@ -162,7 +204,11 @@
           <button type="button" v-if="gridAxes.length > 1" @click="removeGridAxis(idx)" class="text-sm text-red-600 hover:underline">移除</button>
         </div>
         <div class="flex flex-wrap gap-3 mt-3">
-          <button @click="runParamGrid" :disabled="gridLoading || loading" class="px-4 py-2 rounded-md bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50">
+          <button
+            @click="runParamGrid"
+            :disabled="gridLoading || loading"
+            class="px-4 py-2 rounded-md bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
+          >
             {{ gridLoading ? '网格回测中…' : '运行参数网格' }}
           </button>
           <span v-if="gridNotice" class="text-sm text-amber-700 dark:text-amber-400 self-center">{{ gridNotice }}</span>
@@ -265,6 +311,7 @@
                 <th class="py-2 pr-4">{{ $t('trend_research.avg_max_loss_pct') }}</th>
                 <th class="py-2 pr-4">{{ $t('trend_research.hit_rate') }}</th>
                 <th class="py-2 pr-4">{{ $t('trend_research.tp_triggered_count') }}</th>
+                <th class="py-2 pr-4">止损触发</th>
                 <th class="py-2 pr-4">{{ $t('trend_research.actual_scan_contracts') }}</th>
               </tr>
             </thead>
@@ -286,6 +333,7 @@
                   <td class="py-2 pr-4 text-red-600">{{ num(r.avgMaxLossPct) }}%</td>
                   <td class="py-2 pr-4">{{ num(r.hitRatePct) }}%</td>
                   <td class="py-2 pr-4">{{ r.tpTriggeredCount ?? '—' }}</td>
+                  <td class="py-2 pr-4">{{ r.slTriggeredCount != null ? r.slTriggeredCount : '—' }}</td>
                   <td class="py-2 pr-4">
                     <button type="button" class="px-2 py-1 text-xs font-medium rounded bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-200 hover:bg-indigo-200 dark:hover:bg-indigo-800 disabled:opacity-50 cursor-pointer" :disabled="loadingScan === keyFor(r)" @click="fetchAndToggleScanRecords(r)">
                       {{ loadingScan === keyFor(r) ? '加载中...' : (expandedTs === keyFor(r) ? $t('trend_research.collapse_scan') : $t('trend_research.expand_scan')) }}
@@ -293,7 +341,7 @@
                   </td>
                 </tr>
                 <tr v-if="expandedTs === keyFor(r)" class="bg-gray-50 dark:bg-gray-800/50">
-                  <td colspan="11" class="py-3 px-4">
+                  <td colspan="12" class="py-3 px-4">
                     <div v-if="scanRecordsMap[keyFor(r)] === undefined" class="text-gray-500 text-sm">点击上方「展开」或「查询」加载预期与实际信号</div>
                     <template v-else>
                       <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -377,7 +425,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import NavBar from '@/components/NavBar.vue'
 import { getTrendScoreConfig, getTrendValidationHistory, getTrendScanRecords, getTrendExpectedSignals, postTrendValidationGrid } from '@/api'
 
@@ -451,9 +499,15 @@ const runParamGrid = async () => {
       maxCombinations: Math.max(1, Math.min(500, Number(gridMaxCombinations.value) || 60)),
       axes,
     }
+    if (query.value.useOptimized !== false) {
+      const veb = Number(query.value.validationEvalBars)
+      if (Number.isFinite(veb) && veb >= 1 && veb <= 48) body.validationEvalBars = Math.floor(veb)
+    }
     if (query.value.signalThreshold != null && query.value.signalThreshold !== '') {
       body.baseSignalThreshold = Number(query.value.signalThreshold)
     }
+    if (query.value.useBtcPointBrickKline) body.useBtcPointBrickKline = true
+    else if (query.value.useVolumeSyncKline) body.useVolumeSyncKline = true
     const res = await postTrendValidationGrid(body)
     const payload = res?.data?.data ?? res?.data ?? res
     gridRows.value = Array.isArray(payload?.rows) ? payload.rows : []
@@ -488,6 +542,11 @@ function sortByAbsScore(list) {
   })
 }
 
+/** 非日历主时钟（成交量节拍 / 砖石图）：对齐扫描记录时用页面选择的标的周期推算 bar 起点 */
+function isSyntheticClockTimeframe(tf) {
+  return tf === 'BTC_VOL_SYNC' || tf === 'BTC_POINT_BRICK'
+}
+
 /** 周期对应的 K 线间隔（毫秒），用于推算实际扫描用的 last_closed_bar_ts */
 function getBucketMs(timeframe) {
   const tf = (timeframe || '1H').trim().toUpperCase()
@@ -500,14 +559,16 @@ function getBucketMs(timeframe) {
   return 60 * 60 * 1000
 }
 
-/** 研究端新逻辑：计算时间 19:00 = 指标用 19:00 之前的 K 线（即开始时间 18:00 及之前），19:00 及之后共 evalBars 根算收益 */
-function lastBarStartForResearch(row, useOptimized) {
-  const bucketMs = getBucketMs(row?.timeframe || '1H')
+/** 研究端：计算时间当根开盘进场，指标用此前已收盘K线；之后 N 根（验证K线数）算收益 */
+function lastBarStartForResearch(row) {
+  const nominalTf = isSyntheticClockTimeframe(row?.timeframe) ? (query.value.timeframe || '1H') : (row?.timeframe || '1H')
+  const bucketMs = getBucketMs(nominalTf)
   return Number(row?.ts ?? 0) - bucketMs
 }
-/** 实盘：最后一根参与计算的 K 线开始时间 = 计算时间 - 1×周期（last_closed_bar_ts） */
+/** 实盘：最后一根参与计算的 K 线开始时间 = 计算时间 - 1×周期（last_closed_bar_ts）；合成主时钟行用页面标的周期。 */
 function lastBarStartForActual(row) {
-  const bucketMs = getBucketMs(row?.timeframe || '1H')
+  const nominalTf = isSyntheticClockTimeframe(row?.timeframe) ? (query.value.timeframe || '1H') : (row?.timeframe || '1H')
+  const bucketMs = getBucketMs(nominalTf)
   return Number(row?.ts ?? 0) - bucketMs
 }
 
@@ -543,9 +604,31 @@ const fetchAndToggleScanRecords = async (row) => {
   if (Number.isFinite(sampleLimit) && sampleLimit >= 0) expectedParams.topN = Math.floor(sampleLimit)
   const rsTopN = Number(query.value.rsTopN)
   if (Number.isFinite(rsTopN) && rsTopN > 0) expectedParams.rsTopN = Math.floor(rsTopN)
+  if (query.value.useOptimized !== false) {
+    const veb = Number(query.value.validationEvalBars)
+    if (Number.isFinite(veb) && veb >= 1 && veb <= 48) expectedParams.validationEvalBars = Math.floor(veb)
+  }
+  const lbBars = Number(query.value.lookbackBars)
+  if (Number.isFinite(lbBars) && lbBars >= 120) expectedParams.lookbackBars = Math.floor(lbBars)
+  const symLim = Number(query.value.symbolLimit)
+  if (Number.isFinite(symLim) && symLim >= 0) expectedParams.symbolLimit = Math.floor(symLim)
+  const syntheticClock =
+    isSyntheticClockTimeframe(row.timeframe) ||
+    query.value.useVolumeSyncKline ||
+    query.value.useBtcPointBrickKline
+  if (syntheticClock) {
+    expectedParams.alignWithScan = false
+  }
+  if (query.value.exchange === 'binance') {
+    if (query.value.useBtcPointBrickKline || row.timeframe === 'BTC_POINT_BRICK') {
+      expectedParams.useBtcPointBrickKline = true
+    } else if (query.value.useVolumeSyncKline || row.timeframe === 'BTC_VOL_SYNC') {
+      expectedParams.useVolumeSyncKline = true
+    }
+  }
   // 实际扫描信号按「研究端指标截止时间」查：last_closed_bar_ts = 计算时间 - 1×周期（指标用该时间及之前的 K 线），与左侧同一数据截面；includeTpPct 时带回止盈点(%)
   const researchLastBarTs = lastBarStartForResearch(row)
-  const scanParams = { lastClosedBarTs: researchLastBarTs, timeframe, includeTpPct: true, exchange }
+  const scanParams = { lastClosedBarTs: researchLastBarTs, timeframe, includeTpPct: !syntheticClock, exchange }
   if (query.value.useDynamicTp) {
     scanParams.useDynamicTp = true
     if (query.value.tpMin != null) scanParams.tpMin = Number(query.value.tpMin)
@@ -593,6 +676,22 @@ const query = ref({
   tpMin: 1.0,
   tpMax: 9.0,
   atrLookback: 200,
+  validationEvalBars: 5,
+  stopLossPct: 0,
+  useVolumeSyncKline: false,
+  useBtcPointBrickKline: false,
+})
+watch(() => query.value.exchange, (ex) => {
+  if (ex !== 'binance') {
+    query.value.useVolumeSyncKline = false
+    query.value.useBtcPointBrickKline = false
+  }
+})
+watch(() => query.value.useVolumeSyncKline, (v) => {
+  if (v) query.value.useBtcPointBrickKline = false
+})
+watch(() => query.value.useBtcPointBrickKline, (v) => {
+  if (v) query.value.useVolumeSyncKline = false
 })
 
 const loadScoreConfig = async () => {
@@ -632,6 +731,12 @@ const loadHistory = async (withRecalc = false, byRange = false) => {
     if (Number.isFinite(rsTopN) && rsTopN > 0) {
       params.rsTopN = Math.floor(rsTopN)
     }
+    if (query.value.useOptimized !== false) {
+      const veb = Number(query.value.validationEvalBars)
+      if (Number.isFinite(veb) && veb >= 1 && veb <= 48) {
+        params.validationEvalBars = Math.floor(veb)
+      }
+    }
     if (withRecalc) {
       params.tpPct = query.value.recalcTpPct
     } else if (query.value.recalcTpPct != null && Number(query.value.recalcTpPct) > 0) {
@@ -654,7 +759,11 @@ const loadHistory = async (withRecalc = false, byRange = false) => {
       params.lookbackBars = Math.max(120, Number(query.value.lookbackBars) || 500)
       params.symbolLimit = Number(query.value.symbolLimit) || 0
       params.tpPct = query.value.recalcTpPct
+      const sl = Number(query.value.stopLossPct)
+      if (Number.isFinite(sl) && sl > 0) params.validationStopLossPct = sl
     }
+    if (query.value.useBtcPointBrickKline) params.useBtcPointBrickKline = true
+    else if (query.value.useVolumeSyncKline) params.useVolumeSyncKline = true
     const data = await getTrendValidationHistory(params)
     rows.value = Array.isArray(data) ? data : []
   } catch (e) {

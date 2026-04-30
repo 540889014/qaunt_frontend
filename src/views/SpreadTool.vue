@@ -43,14 +43,48 @@
             <select id="timeframe" v-model="form.timeframe" class="w-full p-2 border rounded-md">
               <option v-for="option in timeframeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
             </select>
+            <p v-if="activeAssetTypeTab === 'CRYPTO' && form.timeframe === 'BTC_VOL_SYNC'" class="text-xs text-gray-600 mt-1">
+              {{ $t('spread_tool.volume_sync_hint') }}
+            </p>
+            <p v-if="activeAssetTypeTab === 'CRYPTO' && form.timeframe === 'BTC_POINT_BRICK'" class="text-xs text-gray-600 mt-1">
+              {{ $t('spread_tool.point_brick_hint') }}
+            </p>
           </div>
-          <div v-if="activeAssetTypeTab === 'FOREX'" class="form-group">
-            <label for="startTime">{{ $t('spread_tool.start_time') }}</label>
-            <input type="date" id="startTime" v-model="form.startTime" class="w-full p-2 border rounded-md">
-          </div>
-          <div v-if="activeAssetTypeTab === 'FOREX'" class="form-group">
-            <label for="endTime">{{ $t('spread_tool.end_time') }}</label>
-            <input type="date" id="endTime" v-model="form.endTime" class="w-full p-2 border rounded-md">
+          <div class="md:col-span-3 space-y-2 border-t border-gray-200 pt-3 mt-1">
+            <div class="text-sm font-medium text-gray-700">{{ $t('spread_tool.time_range_section') }}</div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div class="form-group">
+                <label for="startTime">{{ $t('spread_tool.start_time') }}</label>
+                <input
+                  id="startTime"
+                  v-model="form.startTime"
+                  type="datetime-local"
+                  class="w-full p-2 border rounded-md"
+                >
+              </div>
+              <div class="form-group">
+                <label for="endTime">{{ $t('spread_tool.end_time') }}</label>
+                <input
+                  id="endTime"
+                  v-model="form.endTime"
+                  type="datetime-local"
+                  class="w-full p-2 border rounded-md"
+                >
+              </div>
+            </div>
+            <div class="flex flex-wrap gap-2 items-center">
+              <span class="text-xs text-gray-500 mr-1">{{ $t('spread_tool.time_presets_label') }}</span>
+              <button
+                v-for="p in timePresetDefs"
+                :key="p.days"
+                type="button"
+                class="px-2 py-1 text-xs rounded-md border border-gray-300 bg-white hover:bg-gray-50"
+                @click="applyTimePreset(p.days)"
+              >
+                {{ $t(p.labelKey) }}
+              </button>
+            </div>
+            <p class="text-xs text-gray-500">{{ $t('spread_tool.time_range_hint') }}</p>
           </div>
           <div class="form-group">
             <button @click="fetchData" :disabled="!form.leg1.symbol || !form.leg2.symbol || loading" class="w-full p-2 bg-blue-500 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400">
@@ -116,7 +150,7 @@
 import { ref, computed, watch } from 'vue';
 import NavBar from '../components/NavBar.vue';
 import ApexKLineChartDualAxis from '../components/ApexKLineChartDualAxis.vue';
-import { getKlineData, getAllForexMetadata, getMarketInstruments } from '../api';
+import { getKlineData, getAllForexMetadata, getMarketInstruments, fetchBtcVolumeSyncKlineBars, fetchBtcPointBrickKlineBars } from '../api';
 import { useExchangeStore } from '../stores/exchange';
 import { useSubscriptionStore } from '../stores/subscription';
 import { useI18n } from 'vue-i18n';
@@ -138,6 +172,55 @@ const spreadMode = ref('anchor_return_diff');
 const gridStepPoints = ref(0.01);
 const closeZThreshold = ref(0.0);
 const maxGridLevelsVis = ref(6);
+
+const VOLUME_SYNC_KLINE_LIMIT = 50000;
+/** 虚拟币周期：选此项则读本地 {SYMBOL}_BTCVOLSYNC.jbar（需 Binance） */
+const TIMEFRAME_BTC_VOL_SYNC = 'BTC_VOL_SYNC';
+/** 砖石图：读本地 btc_point_brick/{SYMBOL}_BTCPOINTBRICK.jbar（需 Binance） */
+const TIMEFRAME_BTC_POINT_BRICK = 'BTC_POINT_BRICK';
+
+/** datetime-local 用的本地时间字符串 (YYYY-MM-DDTHH:mm) */
+function toDatetimeLocalValue(d) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+const timePresetDefs = [
+  { days: 7, labelKey: 'spread_tool.time_preset_7d' },
+  { days: 30, labelKey: 'spread_tool.time_preset_30d' },
+  { days: 90, labelKey: 'spread_tool.time_preset_90d' },
+  { days: 180, labelKey: 'spread_tool.time_preset_180d' },
+  { days: 365, labelKey: 'spread_tool.time_preset_365d' },
+];
+
+function applyTimePreset(days) {
+  const end = new Date();
+  const start = new Date(end.getTime() - Number(days) * 86400000);
+  start.setHours(0, 0, 0, 0);
+  form.value.endTime = toDatetimeLocalValue(end);
+  form.value.startTime = toDatetimeLocalValue(start);
+}
+
+/**
+ * OKX 风格 instId → Binance U 本位永续 symbol（jbar 文件名用），与 BinanceServiceImpl.toFapiUsdtPerpSymbol 一致。
+ * 例：BTC-USDT-SWAP → BTCUSDT；已是 BTCUSDT 则归一化后返回。
+ */
+function instIdToBinanceVolumeSyncSymbol(raw) {
+  if (!raw || typeof raw !== 'string') return '';
+  const s = raw.trim().toUpperCase();
+  if (s.endsWith('-USDT-SWAP')) {
+    return s.slice(0, -'-USDT-SWAP'.length) + 'USDT';
+  }
+  return s.replace(/-/g, '').replace(/_/g, '');
+}
+
+function volumeSyncBarsToCloseSeries(dto) {
+  const bars = Array.isArray(dto?.bars) ? dto.bars : [];
+  return bars.map((b) => ({
+    x: Number(b.t),
+    y: Number(b.c),
+  })).filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
+}
 
 const assetTypes = [
   { type: 'CRYPTO', label: 'subscriptions.asset_type_crypto', disabled: false },
@@ -167,7 +250,9 @@ const timeframeOptions = computed(() => {
     { value: '1m', label: '1m' }, { value: '3m', label: '3m' }, { value: '5m', label: '5m' },
     { value: '15m', label: '15m' }, { value: '30m', label: '30m' }, { value: '1H', label: '1H' },
     { value: '2H', label: '2H' }, { value: '4H', label: '4H' }, { value: '6H', label: '6H' },
-    { value: '12H', label: '12H' }, { value: '1D', label: '1D' }
+    { value: '12H', label: '12H' }, { value: '1D', label: '1D' },
+    { value: TIMEFRAME_BTC_VOL_SYNC, label: t('spread_tool.timeframe_volume_sync') },
+    { value: TIMEFRAME_BTC_POINT_BRICK, label: t('spread_tool.timeframe_point_brick') },
   ];
 });
 
@@ -177,17 +262,17 @@ const showDropdown = ref({ leg1: false, leg2: false });
 
 watch(activeAssetTypeTab, (newVal) => {
   const isCrypto = newVal === 'CRYPTO';
-  const sixMonthsAgo = new Date();
-  sixMonthsAgo.setDate(sixMonthsAgo.getDate() - 180);
-  const today = new Date();
+  const end = new Date();
+  const start = new Date(end.getTime() - 180 * 86400000);
+  start.setHours(0, 0, 0, 0);
 
   form.value = {
     leg1: { symbol: '', exchange: isCrypto ? 'okx' : 'fxcm' },
     leg2: { symbol: '', exchange: isCrypto ? 'okx' : 'fxcm' },
     timeframe: '1h',
     exchange: isCrypto ? 'okx' : 'fxcm',
-    startTime: sixMonthsAgo.toISOString().split('T')[0],
-    endTime: today.toISOString().split('T')[0],
+    startTime: toDatetimeLocalValue(start),
+    endTime: toDatetimeLocalValue(end),
   };
   chartData.value = { leg1: [], leg2: [], aligned: [], spread: [] };
   bollingerChartSeries.value = [];
@@ -196,8 +281,22 @@ watch(activeAssetTypeTab, (newVal) => {
   loadSymbols();
 }, { immediate: true });
 
+function isBtcClockBrickTimeframe(tf) {
+  return tf === TIMEFRAME_BTC_VOL_SYNC || tf === TIMEFRAME_BTC_POINT_BRICK;
+}
+
+watch(() => form.value.timeframe, (tf) => {
+  if (activeAssetTypeTab.value !== 'CRYPTO') return;
+  if (isBtcClockBrickTimeframe(tf) && form.value.exchange !== 'binance') {
+    form.value.exchange = 'binance';
+  }
+});
+
 watch(() => form.value.exchange, (newEx) => {
   if (activeAssetTypeTab.value === 'CRYPTO') {
+    if (newEx !== 'binance' && isBtcClockBrickTimeframe(form.value.timeframe)) {
+      form.value.timeframe = '1H';
+    }
     form.value.leg1.exchange = newEx;
     form.value.leg2.exchange = newEx;
     loadSymbols();
@@ -442,8 +541,15 @@ function computeSpreadSeries(alignedRows, mode) {
 }
 
 async function fetchData() {
+  const volSync = activeAssetTypeTab.value === 'CRYPTO' && form.value.timeframe === TIMEFRAME_BTC_VOL_SYNC;
+  const pointBrick = activeAssetTypeTab.value === 'CRYPTO' && form.value.timeframe === TIMEFRAME_BTC_POINT_BRICK;
+  const btcClockKline = volSync || pointBrick;
   if (!form.value.leg1.symbol || !form.value.leg2.symbol || !form.value.timeframe) {
     error.value = t('spread_tool.form_incomplete_error');
+    return;
+  }
+  if (btcClockKline && form.value.exchange !== 'binance') {
+    error.value = t('spread_tool.error_synthetic_binance_need_binance');
     return;
   }
   loading.value = true;
@@ -453,26 +559,41 @@ async function fetchData() {
   zScoreChartSeries.value = [];
 
   try {
-    let startTime, endTime;
-
-    if (activeAssetTypeTab.value === 'FOREX') {
-      if (!form.value.startTime || !form.value.endTime) {
-        error.value = t('spread_tool.time_range_incomplete_error');
-        loading.value = false;
-        return;
-      }
-      startTime = new Date(form.value.startTime).getTime();
-      endTime = new Date(form.value.endTime).getTime();
-    } else {
-      const now = Date.now();
-      startTime = now - 3600 * 1000 * 24 * 180; // 180 days ago for crypto
-      endTime = now;
+    if (!form.value.startTime || !form.value.endTime) {
+      error.value = t('spread_tool.time_range_incomplete_error');
+      loading.value = false;
+      return;
+    }
+    const startTime = new Date(form.value.startTime).getTime();
+    const endTime = new Date(form.value.endTime).getTime();
+    if (!Number.isFinite(startTime) || !Number.isFinite(endTime) || startTime >= endTime) {
+      error.value = t('spread_tool.time_range_invalid_error');
+      loading.value = false;
+      return;
     }
 
-    const [kline1Res, kline2Res] = await Promise.all([
-      getKlineData(form.value.leg1.symbol, form.value.timeframe, startTime, endTime, form.value.leg1.exchange, activeAssetTypeTab.value),
-      getKlineData(form.value.leg2.symbol, form.value.timeframe, startTime, endTime, form.value.leg2.exchange, activeAssetTypeTab.value)
-    ]);
+    let kline1Res;
+    let kline2Res;
+    if (btcClockKline) {
+      const sym1 = instIdToBinanceVolumeSyncSymbol(form.value.leg1.symbol);
+      const sym2 = instIdToBinanceVolumeSyncSymbol(form.value.leg2.symbol);
+      if (!sym1 || !sym2) {
+        error.value = t('spread_tool.error_synthetic_binance_symbol');
+        return;
+      }
+      const fetchBars = volSync ? fetchBtcVolumeSyncKlineBars : fetchBtcPointBrickKlineBars;
+      const [dto1, dto2] = await Promise.all([
+        fetchBars({ symbol: sym1, startMs: startTime, endMs: endTime, limit: VOLUME_SYNC_KLINE_LIMIT }),
+        fetchBars({ symbol: sym2, startMs: startTime, endMs: endTime, limit: VOLUME_SYNC_KLINE_LIMIT }),
+      ]);
+      kline1Res = volumeSyncBarsToCloseSeries(dto1).map((p) => ({ timestamp: new Date(p.x).toISOString(), closePrice: p.y }));
+      kline2Res = volumeSyncBarsToCloseSeries(dto2).map((p) => ({ timestamp: new Date(p.x).toISOString(), closePrice: p.y }));
+    } else {
+      [kline1Res, kline2Res] = await Promise.all([
+        getKlineData(form.value.leg1.symbol, form.value.timeframe, startTime, endTime, form.value.leg1.exchange, activeAssetTypeTab.value),
+        getKlineData(form.value.leg2.symbol, form.value.timeframe, startTime, endTime, form.value.leg2.exchange, activeAssetTypeTab.value)
+      ]);
+    }
 
     if (!kline1Res || !kline2Res || kline1Res.length === 0 || kline2Res.length === 0) {
       error.value = t('spread_tool.error_no_data');

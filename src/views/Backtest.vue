@@ -25,7 +25,14 @@
             </div>
             <div>
               <label for="exchange" class="block text-sm font-medium text-gray-700">{{ $t('backtest.exchange') }}</label>
-              <n-select v-model:value="coreParams.exchange" @update:value="handleExchangeChange" id="exchange" :options="exchangeOptions" class="mt-1" />
+              <n-select
+                v-model:value="coreParams.exchange"
+                @update:value="handleExchangeChange"
+                id="exchange"
+                :options="exchangeOptions"
+                :disabled="isBtcSyntheticOhlcSelected"
+                class="mt-1"
+              />
             </div>
             <div>
               <label for="startDate" class="block text-sm font-medium text-gray-700">{{ $t('backtest.start_date') }}</label>
@@ -47,6 +54,9 @@
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">{{ $t('backtest.ohlc_period') }}</label>
               <n-select v-model:value="coreParams.dataTypes.ohlc" multiple :options="timeframeOptions" :placeholder="$t('backtest.select_period')" class="max-w-sm"/>
+              <p v-if="isBtcSyntheticOhlcSelected" class="mt-2 text-sm text-amber-700 dark:text-amber-300">
+                {{ $t('backtest_instances.form.synthetic_binance_ohlc_hint') }}
+              </p>
             </div>
           </div>
 
@@ -244,7 +254,22 @@ export default defineComponent({
     const tradeLog = ref([]);
 
     // Static Options
-    const exchangeOptions = [{ label: 'OKX', value: 'okx' }, { label: 'Binance', value: 'binance' }];
+    const isBtcSyntheticOhlcSelected = computed(() => {
+      const o = coreParams.value.dataTypes?.ohlc;
+      return Array.isArray(o) && (o.includes('BTCVOLSYNC') || o.includes('BTCPOINTBRICK'));
+    });
+
+    const ohlcSelectionPrev = ref([]);
+
+    const exchangeOptions = computed(() => {
+      if (isBtcSyntheticOhlcSelected.value) {
+        return [
+          { label: 'OKX', value: 'okx', disabled: true },
+          { label: 'Binance', value: 'binance' }
+        ];
+      }
+      return [{ label: 'OKX', value: 'okx' }, { label: 'Binance', value: 'binance' }];
+    });
     const patternOptions = [{ label: 'OHLC', value: 'OHLC' }, { label: 'ORDERBOOK', value: 'ORDERBOOK' }];
     const matchingAlgorithmOptions = [
       { label: '最优价撮合 (Best Price)', value: 'BEST_PRICE' },
@@ -252,14 +277,22 @@ export default defineComponent({
       { label: '中价撮合 (Mid Price)', value: 'MID_PRICE' },
       { label: '滑点模拟 (Slippage)', value: 'SLIPPAGE' }
     ];
-    const timeframeMap = { '1m': 'ONE_MINUTE', '5m': 'FIVE_MINUTE', '15m': 'FIFTEEN_MINUTE', '1h': 'ONE_HOUR', '4h': 'FOUR_HOUR', '12h': 'TWELVE_HOUR', '1d': 'ONE_DAY' };
+    const timeframeMap = {
+      '1m': 'ONE_MINUTE', '3m': 'THREE_MINUTE', '5m': 'FIVE_MINUTE', '15m': 'FIFTEEN_MINUTE', '30m': 'THIRTY_MINUTE',
+      '1H': 'ONE_HOUR', '2H': 'TWO_HOUR', '4H': 'FOUR_HOUR', '6H': 'SIX_HOUR', '12H': 'TWELVE_HOUR',
+      '1D': 'ONE_DAY', '2D': 'TWO_DAY', '3D': 'THREE_DAY', '1W': 'ONE_WEEK', '1M': 'ONE_MONTH', '3M': 'THREE_MONTH',
+      'BTCVOLSYNC': 'BTCVOLSYNC',
+      'BTCPOINTBRICK': 'BTCPOINTBRICK'
+    };
     const timeframeOptions = [
         { label: '1m', value: '1m' }, { label: '3m', value: '3m' }, { label: '5m', value: '5m' },
         { label: '15m', value: '15m' }, { label: '30m', value: '30m' }, { label: '1H', value: '1H' },
         { label: '2H', value: '2H' }, { label: '4H', value: '4H' }, { label: '6H', value: '6H' },
         { label: '12H', value: '12H' }, { label: '1D', value: '1D' }, { label: '2D', value: '2D' },
         { label: '3D', value: '3D' }, { label: '1W', value: '1W' }, { label: '1M', value: '1M' },
-        { label: '3M', value: '3M' }
+        { label: '3M', value: '3M' },
+        { label: 'BTCVOLSYNC (成交量驱动)', value: 'BTCVOLSYNC' },
+        { label: 'BTCPOINTBRICK (砖石图)', value: 'BTCPOINTBRICK' }
     ];
 
     // Computed Properties
@@ -513,11 +546,38 @@ export default defineComponent({
       }
     }, { deep: true });
 
+    watch(
+      () => coreParams.value.dataTypes?.ohlc,
+      async (ohlc) => {
+        if (!Array.isArray(ohlc)) return;
+        const hasV = ohlc.includes('BTCVOLSYNC');
+        const hasB = ohlc.includes('BTCPOINTBRICK');
+        if (hasV && hasB) {
+          const prev = ohlcSelectionPrev.value;
+          const addedV = hasV && !prev.includes('BTCVOLSYNC');
+          const addedB = hasB && !prev.includes('BTCPOINTBRICK');
+          let fixed = [...ohlc];
+          if (addedB && !addedV) fixed = fixed.filter((x) => x !== 'BTCVOLSYNC');
+          else if (addedV && !addedB) fixed = fixed.filter((x) => x !== 'BTCPOINTBRICK');
+          else fixed = fixed.filter((x) => x !== 'BTCVOLSYNC');
+          coreParams.value.dataTypes.ohlc = fixed;
+          ohlcSelectionPrev.value = [...fixed];
+          return;
+        }
+        ohlcSelectionPrev.value = [...ohlc];
+        if ((hasV || hasB) && coreParams.value.exchange !== 'binance') {
+          await handleExchangeChange('binance');
+        }
+      },
+      { deep: true }
+    );
+
     return {
       t,
       logContainer,
       coreParams,
       exchangeOptions,
+      isBtcSyntheticOhlcSelected,
       patternOptions,
       timeframeOptions,
       strategyParams,

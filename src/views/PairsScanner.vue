@@ -14,10 +14,30 @@
     </div>
 
     <div class="bg-white p-6 rounded-lg shadow-md space-y-6">
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div v-if="exchange === 'binance' && assetType === 'CRYPTO'" class="flex flex-col justify-end gap-3">
+          <div class="text-sm font-medium text-gray-700">{{ $t('pairs_scanner.synthetic_main_clock') }}</div>
+          <label class="inline-flex items-center gap-2 cursor-pointer select-none">
+            <input v-model="useVolumeSyncKline" type="checkbox" class="rounded border-gray-300" />
+            <span class="text-sm text-gray-700">{{ $t('pairs_scanner.volume_sync_hint_short') }}</span>
+          </label>
+          <label class="inline-flex items-center gap-2 cursor-pointer select-none">
+            <input v-model="useBtcPointBrickKline" type="checkbox" class="rounded border-gray-300" />
+            <span class="text-sm text-gray-700">{{ $t('pairs_scanner.point_brick_hint_short') }}</span>
+          </label>
+        </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">{{ $t('pairs_scanner.timeframe') }}</label>
-          <n-select v-model:value="form.timeframe" :options="timeframeOptions" class="w-full" />
+          <n-select v-model:value="form.timeframe" :options="timeframeOptions" :disabled="useSyntheticMainClock" class="w-full" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">{{ $t('pairs_scanner.market_data_before') }}</label>
+          <n-date-picker
+            v-model:value="form.marketDataBeforeMs"
+            type="datetime"
+            clearable
+            class="w-full"
+          />
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">{{ $t('pairs_scanner.lookback_bars') }}</label>
@@ -115,7 +135,7 @@
             <span class="flex items-center gap-2">
               <span class="text-xs text-gray-500">{{ $t('pairs_scanner.symbol_count', { n: selectedSymbols.length }) }}</span>
               <n-button
-                v-if="contractOptions.length > 0"
+                v-if="symbolSelectOptions.length > 0"
                 size="small"
                 quaternary
                 type="primary"
@@ -129,11 +149,13 @@
             v-model:value="selectedSymbols"
             multiple
             filterable
-            :options="contractOptions"
+            :options="symbolSelectOptions"
             :placeholder="$t('pairs_scanner.select_symbols')"
             :disabled="assetType === 'CRYPTO' && (!exchange || !instType)"
           />
-          <p class="mt-2 text-xs text-gray-500">{{ $t('pairs_scanner.hint_data_source') }}</p>
+          <p class="mt-2 text-xs text-gray-500">
+            {{ dataSourceHint }}
+          </p>
         </div>
       </div>
     </div>
@@ -224,9 +246,9 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { useMessage, NButton, NSelect, NInputNumber } from 'naive-ui';
+import { useMessage, NButton, NSelect, NInputNumber, NDatePicker } from 'naive-ui';
 import NavBar from '@/components/NavBar.vue';
 import { scanPairs, getPairsScanRuns, getPairsScanRunResults, getMarketInstruments, getAllForexMetadata } from '@/api';
 
@@ -277,6 +299,24 @@ const marginType = ref(''); // '' = 全部, COIN = 币本位, USDT = USDT本位
 const allInstruments = ref([]);
 const allForexPairs = ref([]);
 
+const BINANCE_PAIRS_SCANNER_SYMBOL_POOL = Object.freeze([
+  'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'TRUUSDT', 'REDUSDT', 'XRPUSDT', 'SIRENUSDT', 'DOGEUSDT', 'ZECUSDT', 'TAOUSDT',
+  '1000PEPEUSDT', 'BNBUSDT', 'PLAYUSDT', 'HYPEUSDT', 'EDGEUSDT', 'STOUSDT', 'RIVERUSDT', 'AVAXUSDT', 'BULLAUSDT', 'ADAUSDT',
+  'PAXGUSDT', 'SUIUSDT', 'LINKUSDT', 'SUPERUSDT', 'PIPPINUSDT', 'FILUSDT', 'BANKUSDT', 'ENAUSDT', 'DOTUSDT', 'NEARUSDT',
+  'XPLUSDT', 'APRUSDT', 'BCHUSDT', 'ONTUSDT', 'TREEUSDT', 'MMTUSDT', 'AAVEUSDT', '币安人生USDT', 'WLDUSDT', 'AIOTUSDT',
+  'ARIAUSDT', 'FETUSDT', 'KOMAUSDT', 'LTCUSDT', 'ALGOUSDT', 'XAUTUSDT', 'DUSDT', 'FARTCOINUSDT', 'PUMPUSDT', 'XLMUSDT',
+  'KITEUSDT', 'BELUSDT', 'TRXUSDT', 'TRUMPUSDT', 'DEGOUSDT', '1000SHIBUSDT', 'UNIUSDT', 'ORDERUSDT', 'AVNTUSDT', 'WIFUSDT',
+  'MONUSDT', 'NOMUSDT', 'ARBUSDT', 'BSBUSDT', 'PENGUUSDT', 'ASTERUSDT', '1000BONKUSDT', 'LABUSDT', 'BASEDUSDT', 'CRVUSDT',
+  'DRIFTUSDT', 'ONDOUSDT', 'RENDERUSDT', 'BOBUSDT', 'BREVUSDT', '4USDT', 'CFGUSDT', 'POWERUSDT', 'LITUSDT', 'XMRUSDT',
+  'GALAUSDT', 'HUSDT', 'ETCUSDT', 'BANANAS31USDT', 'VVVUSDT', 'VIRTUALUSDT', 'BARDUSDT', 'GIGGLEUSDT', 'ONGUSDT', 'APTUSDT',
+  'BEATUSDT', 'WLFIUSDT', 'TONUSDT', 'HBARUSDT', 'RLSUSDT', 'AXLUSDT', 'DASHUSDT', 'ATOMUSDT', 'PRLUSDT', 'OPUSDT',
+  'PIXELUSDT', 'SIGNUSDT', 'BERAUSDT', 'FUSDT', 'PTBUSDT', 'ICPUSDT', 'REZUSDT', 'MUSDT', 'ZROUSDT', 'BRUSDT',
+  'INJUSDT', 'TRIAUSDT', 'CTSIUSDT', 'NILUSDT', 'SNXUSDT', 'JCTUSDT', 'NIGHTUSDT', 'AGTUSDT', 'SYSUSDT', 'POLUSDT',
+  'IPUSDT', 'KATUSDT', 'LYNUSDT', 'KERNELUSDT', 'LDOUSDT', 'SEIUSDT', 'PENDLEUSDT', 'ZRXUSDT', 'TIAUSDT', 'CHZUSDT',
+  'SAHARAUSDT', 'SOLVUSDT', 'MIRAUSDT', 'CUSDT', 'CLOUSDT', 'ESPUSDT', 'DYDXUSDT', 'FOGOUSDT', 'SQDUSDT', 'ROBOUSDT',
+  'ZKCUSDT', 'DEXEUSDT', 'INITUSDT', 'SANDUSDT', 'PNUTUSDT', 'AXSUSDT', 'HIPPOUSDT', 'ZENUSDT', 'SPXUSDT', 'MOODENGUSDT',
+]);
+
 const loading = ref(false);
 const error = ref('');
 const response = ref(null);
@@ -288,6 +328,7 @@ const selectedRunId = ref(null);
 
 const form = reactive({
   timeframe: '1H',
+  marketDataBeforeMs: null,
   lookbackBars: 2000,
   olsWindowBars: 1000,
   adfWindowBars: 1000,
@@ -303,13 +344,60 @@ const form = reactive({
 });
 
 const selectedSymbols = ref([]);
+/** Binance 成交量节拍：与后端 BtcVolumeSyncBarServiceImpl.TIMEFRAME 一致 */
+const useVolumeSyncKline = ref(false);
+/** 砖石图 BTCPOINTBRICK：与成交量节拍二选一（同时勾选时以后端为准：砖石优先） */
+const useBtcPointBrickKline = ref(false);
+
+const useSyntheticMainClock = computed(
+  () =>
+    exchange.value === 'binance' &&
+    assetType.value === 'CRYPTO' &&
+    (useVolumeSyncKline.value || useBtcPointBrickKline.value)
+);
+
+const dataSourceHint = computed(() => {
+  if (exchange.value === 'binance' && assetType.value === 'CRYPTO') {
+    if (isWhitelistPool.value) return t('pairs_scanner.point_brick_whitelist_only');
+    if (useBtcPointBrickKline.value) {
+      return `${t('pairs_scanner.hint_data_source_point_brick')} ${t('pairs_scanner.point_brick_whitelist_only')}`;
+    }
+    if (useVolumeSyncKline.value) return t('pairs_scanner.hint_data_source_vol_sync');
+  }
+  return t('pairs_scanner.hint_data_source');
+});
+
+const isPointBrickPool = computed(
+  () =>
+    exchange.value === 'binance' &&
+    assetType.value === 'CRYPTO' &&
+    useBtcPointBrickKline.value
+);
+
+/** 扫描币池统一白名单：Binance + CRYPTO + SWAP */
+const isWhitelistPool = computed(
+  () =>
+    exchange.value === 'binance' &&
+    assetType.value === 'CRYPTO' &&
+    instType.value === 'SWAP'
+);
 
 const timeframeOptions = [
   { label: '15m', value: '15m' },
   { label: '1H', value: '1H' },
   { label: '4H', value: '4H' },
   { label: '1D', value: '1D' },
+  { label: 'BTC_VOL_SYNC (成交量节拍)', value: 'BTC_VOL_SYNC' },
+  { label: 'BTC_POINT_BRICK (砖石图)', value: 'BTC_POINT_BRICK' },
 ];
+
+/** 与 PairsScannerServiceImpl 持久化的 timeframe 字符串一致 */
+const historyTimeframe = computed(() => {
+  if (exchange.value !== 'binance' || assetType.value !== 'CRYPTO') return form.timeframe;
+  if (useBtcPointBrickKline.value) return 'BTC_POINT_BRICK';
+  if (useVolumeSyncKline.value) return 'BTC_VOL_SYNC';
+  return form.timeframe;
+});
 
 const contractOptions = computed(() => {
   if (assetType.value === 'CRYPTO') {
@@ -328,6 +416,38 @@ const contractOptions = computed(() => {
     return (allForexPairs.value || []).map(item => ({ label: item.symbol, value: item.symbol }));
   }
   return [];
+});
+
+/** Binance+CRYPTO+SWAP：固定展示指定扫描币池（150） */
+const symbolSelectOptions = computed(() => {
+  if (isWhitelistPool.value) {
+    return BINANCE_PAIRS_SCANNER_SYMBOL_POOL.map((s) => ({ label: s, value: s }));
+  }
+  return contractOptions.value;
+});
+
+watch(useVolumeSyncKline, (v) => {
+  if (v) useBtcPointBrickKline.value = false;
+});
+watch(useBtcPointBrickKline, (v) => {
+  if (v) useVolumeSyncKline.value = false;
+});
+
+watch([exchange, assetType], () => {
+  if (exchange.value !== 'binance' || assetType.value !== 'CRYPTO') {
+    useVolumeSyncKline.value = false;
+    useBtcPointBrickKline.value = false;
+  }
+});
+
+function pruneSelectedToSymbolPool() {
+  if (!isPointBrickPool.value) return;
+  const allowed = new Set(symbolSelectOptions.value.map((o) => o.value));
+  selectedSymbols.value = selectedSymbols.value.filter((s) => allowed.has(s));
+}
+
+watch([useBtcPointBrickKline, symbolSelectOptions], () => {
+  pruneSelectedToSymbolPool();
 });
 
 const fetchContracts = async () => {
@@ -379,7 +499,7 @@ const onAssetTypeChange = () => {
 };
 
 const selectAllContracts = () => {
-  selectedSymbols.value = contractOptions.value.map(o => o.value);
+  selectedSymbols.value = symbolSelectOptions.value.map((o) => o.value);
 };
 
 const headers = [
@@ -401,6 +521,14 @@ const runScan = async () => {
     error.value = t('pairs_scanner.errors.min_symbols');
     return;
   }
+  if (isPointBrickPool.value) {
+    const allowed = new Set(symbolSelectOptions.value.map((o) => o.value));
+    const n = symbols.filter((s) => allowed.has(s)).length;
+    if (n < 2) {
+      error.value = t('pairs_scanner.errors.point_brick_whitelist_min_symbols');
+      return;
+    }
+  }
 
   loading.value = true;
   try {
@@ -412,8 +540,40 @@ const runScan = async () => {
       exchange: assetType.value === 'CRYPTO' ? exchange.value : (assetType.value === 'FOREX' ? 'fxcm' : null),
       instType: assetType.value === 'CRYPTO' ? instType.value : null,
     };
+    if (exchange.value === 'binance' && assetType.value === 'CRYPTO') {
+      if (useBtcPointBrickKline.value) {
+        payload.useBtcPointBrickKline = true;
+      } else if (useVolumeSyncKline.value) {
+        payload.useVolumeSyncKline = true;
+      }
+    }
     const res = await scanPairs(payload);
     response.value = res;
+    const errKey = res?.params?.error;
+    if (errKey === 'point_brick_whitelist_min_symbols') {
+      error.value = t('pairs_scanner.errors.point_brick_whitelist_min_symbols');
+      return;
+    }
+    if (errKey === 'volume_sync_requires_binance_crypto') {
+      error.value = t('pairs_scanner.errors.volume_sync_requires_binance_crypto');
+      return;
+    }
+    if (errKey === 'point_brick_requires_binance_crypto') {
+      error.value = t('pairs_scanner.errors.point_brick_requires_binance_crypto');
+      return;
+    }
+    if (errKey === 'symbols.size<2') {
+      error.value = t('pairs_scanner.errors.min_symbols');
+      return;
+    }
+    if (errKey === 'no_symbols_with_data') {
+      error.value = t('pairs_scanner.errors.no_symbols_with_data');
+      return;
+    }
+    if (errKey) {
+      error.value = String(errKey);
+      return;
+    }
     message.success(t('pairs_scanner.messages.scan_finished'));
   } catch (e) {
     console.error(e);
@@ -433,7 +593,7 @@ const loadRuns = async () => {
   runsError.value = '';
   historyLoading.value = true;
   try {
-    const res = await getPairsScanRuns(form.timeframe, 20);
+    const res = await getPairsScanRuns(historyTimeframe.value, 20);
     runs.value = Array.isArray(res) ? res : [];
   } catch (e) {
     console.error(e);
@@ -468,10 +628,10 @@ const loadRunResults = async (runId) => {
 
 onMounted(async () => {
   await fetchContracts();
-  // preselect a subset if too many
-  const opts = contractOptions.value;
+  const opts = symbolSelectOptions.value;
   if (opts.length > 0) {
-    selectedSymbols.value = opts.slice(0, Math.min(50, opts.length)).map(o => o.value);
+    const cap = isWhitelistPool.value ? opts.length : Math.min(50, opts.length);
+    selectedSymbols.value = opts.slice(0, cap).map((o) => o.value);
   }
   await loadRuns();
 });
